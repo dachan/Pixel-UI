@@ -15,7 +15,7 @@ import argparse
 import os
 from datetime import datetime
 
-from flask import Flask, Response, jsonify, send_file
+from flask import Flask, Response, jsonify, request, send_file
 from flask_cors import CORS
 
 from camera import get_camera
@@ -73,6 +73,21 @@ def camera_metadata():
     """Live per-frame metadata snapshot (exposure, gain, lux, temp, ...)."""
     try:
         return jsonify(camera.metadata())
+    except Exception as exc:
+        return jsonify(error=str(exc)), 503
+
+
+@app.route("/api/camera/controls", methods=["GET", "POST"])
+def camera_controls():
+    """GET current exposure state; POST {auto_exposure, iso, shutter_us} to set.
+
+    Aperture is not included: Pi cameras have no software-controllable aperture.
+    """
+    try:
+        if request.method == "POST":
+            settings = request.get_json(silent=True) or {}
+            return jsonify(camera.set_controls(settings))
+        return jsonify(camera.controls_state())
     except Exception as exc:
         return jsonify(error=str(exc)), 503
 

@@ -23,6 +23,15 @@ import time
 from datetime import datetime
 
 
+def _shutter_label(us: int) -> str:
+    """Human shutter label, e.g. 10000 -> '1/100s', 500000 -> '0.5s'."""
+    if us <= 0:
+        return "0s"
+    if us >= 1_000_000:
+        return f"{us / 1_000_000:.1f}s"
+    return f"1/{round(1_000_000 / us)}s"
+
+
 def _jsonable(value):
     """Recursively coerce camera data into JSON-serializable primitives.
 
@@ -75,6 +84,22 @@ class BaseCamera(abc.ABC):
         """Return the current per-frame metadata as a flat dict."""
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def set_controls(self, settings: dict) -> dict:
+        """Apply exposure settings to the live camera; return the new state.
+
+        Accepted keys (all optional): ``auto_exposure`` (bool), ``iso`` (int,
+        mapped to analogue gain = iso/100), ``shutter_us`` (int, ExposureTime in
+        microseconds). Aperture is intentionally absent — Pi cameras have no
+        software-controllable aperture.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def controls_state(self) -> dict:
+        """Return the current ``{auto_exposure, iso, shutter_us}`` state."""
+        raise NotImplementedError
+
 
 class MockCamera(BaseCamera):
     """Synthesizes JPEG frames with Pillow so the dev stream is visibly live.
@@ -87,6 +112,12 @@ class MockCamera(BaseCamera):
     WIDTH = 1280
     HEIGHT = 720
     FPS = 10
+
+    def __init__(self):
+        # Exposure state, mirrored from set_controls so the UI is testable.
+        self._auto_exposure = True
+        self._exposure_us = 10000   # 1/100 s
+        self._gain = 1.0            # ISO 100
 
     def _render_frame(self):
         from PIL import Image, ImageDraw
@@ -105,9 +136,34 @@ class MockCamera(BaseCamera):
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         draw.text((20, 20), f"MOCK CAMERA  {stamp}", fill=(240, 240, 240))
 
+        # Overlay current exposure settings so control changes are visible.
+        st = self.controls_state()
+        mode = "AUTO" if st["auto_exposure"] else "MANUAL"
+        draw.text(
+            (20, 40),
+            f"{mode}  ISO {st['iso']}  {_shutter_label(st['shutter_us'])}",
+            fill=(120, 230, 160),
+        )
+
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=80)
         return buf.getvalue()
+
+    def set_controls(self, settings: dict) -> dict:
+        if settings.get("auto_exposure") is not None:
+            self._auto_exposure = bool(settings["auto_exposure"])
+        if settings.get("shutter_us") is not None:
+            self._exposure_us = max(1, int(settings["shutter_us"]))
+        if settings.get("iso") is not None:
+            self._gain = max(1.0, float(settings["iso"]) / 100.0)
+        return self.controls_state()
+
+    def controls_state(self) -> dict:
+        return {
+            "auto_exposure": self._auto_exposure,
+            "iso": int(round(self._gain * 100)),
+            "shutter_us": self._exposure_us,
+        }
 
     def stream(self):
         interval = 1.0 / self.FPS
@@ -154,10 +210,17 @@ class MockCamera(BaseCamera):
         # Live values: a few oscillate with time so the UI visibly updates.
         t = time.time()
         wobble = math.sin(t * 0.7) * 0.5 + 0.5  # 0..1
+        # In manual mode, report the set exposure/gain instead of the wobble.
+        if self._auto_exposure:
+            exposure = int(8000 + wobble * 12000)
+            gain = round(1.0 + wobble * 3.0, 3)
+        else:
+            exposure = self._exposure_us
+            gain = round(self._gain, 3)
         return _jsonable(
             {
-                "ExposureTime": int(8000 + wobble * 12000),
-                "AnalogueGain": round(1.0 + wobble * 3.0, 3),
+                "ExposureTime": exposure,
+                "AnalogueGain": gain,
                 "DigitalGain": 1.0,
                 "Lux": round(120 + wobble * 380, 1),
                 "ColourTemperature": int(4200 + wobble * 1600),
@@ -211,6 +274,9 @@ class RealCamera(BaseCamera):
         self._output = self.StreamingOutput()
         self._picam2.start_recording(MJPEGEncoder(), FileOutput(self._output))
 
+        # Exposure state echoed back to clients (defaults: auto).
+        self._state = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
+
     def stream(self):
         while True:
             with self._output.condition:
@@ -247,6 +313,31 @@ class RealCamera(BaseCamera):
 
     def metadata(self) -> dict:
         return _jsonable(dict(self._picam2.capture_metadata()))
+
+    def set_controls(self, settings: dict) -> dict:
+        if settings.get("auto_exposure") is not None:
+            self._state["auto_exposure"] = bool(settings["auto_exposure"])
+        if settings.get("iso") is not None:
+            self._state["iso"] = max(100, int(settings["iso"]))
+        if settings.get("shutter_us") is not None:
+            self._state["shutter_us"] = max(1, int(settings["shutter_us"]))
+
+        if self._state["auto_exposure"]:
+            # Hand exposure back to the auto-exposure algorithm.
+            self._picam2.set_controls({"AeEnable": True})
+        else:
+            # Manual: disable AE and pin gain (ISO/100) + exposure time.
+            self._picam2.set_controls(
+                {
+                    "AeEnable": False,
+                    "AnalogueGain": self._state["iso"] / 100.0,
+                    "ExposureTime": self._state["shutter_us"],
+                }
+            )
+        return self.controls_state()
+
+    def controls_state(self) -> dict:
+        return dict(self._state)
 
 
 def get_camera() -> BaseCamera:

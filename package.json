@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "CAMERA=mock backend/.venv/bin/python backend/app.py --port 5000",
-    "dev:frontend": "npm --prefix frontend run dev -- --port 3000",
+    "dev:frontend": "npm --prefix frontend run dev -- --port 4000",
     "build": "NEXT_PUBLIC_API_BASE= npm --prefix frontend run build"
   },
   "devDependencies": {

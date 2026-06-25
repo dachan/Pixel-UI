@@ -24,4 +24,5 @@ exec "${CHROMIUM}" \
   --disable-infobars \
   --disable-session-crashed-bubble \
   --check-for-update-interval=31536000 \
-  --no-first-run
+  --no-first-run \
+  --password-store=basic

@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   output: "export",
   images: { unoptimized: true },
   trailingSlash: true,
+  // Allow loading the dev server via these hosts (HMR + font dev resources).
+  // Only affects `next dev`; ignored by the static export/production build.
+  allowedDevOrigins: ["127.0.0.1", "10.0.0.194"],
 };
 
 export default nextConfig;

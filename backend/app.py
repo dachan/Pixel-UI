@@ -59,6 +59,13 @@ camera = get_camera()
 # API
 # --------------------------------------------------------------------------- #
 
+@app.after_request
+def api_no_cache(response):
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.route("/api/health")
 def health():
     return jsonify(status="ok")
@@ -125,6 +132,29 @@ def capture():
     return jsonify(filename=filename)
 
 
+@app.route("/api/captures")
+def list_captures():
+    """List saved capture filenames, newest first."""
+    os.makedirs(CAPTURES_DIR, exist_ok=True)
+    names = [
+        f
+        for f in os.listdir(CAPTURES_DIR)
+        if f.endswith(".jpg") and os.path.isfile(os.path.join(CAPTURES_DIR, f))
+    ]
+    names.sort(reverse=True)
+    return jsonify(captures=names)
+
+
+@app.route("/api/captures/<path:filename>")
+def get_capture(filename):
+    """Serve a single captured JPEG."""
+    if os.path.basename(filename) != filename or not filename.endswith(".jpg"):
+        return "Not found", 404
+    path = os.path.join(CAPTURES_DIR, filename)
+    if not os.path.isfile(path):
+        return "Not found", 404
+    return send_file(path, mimetype="image/jpeg")
+
 # --------------------------------------------------------------------------- #
 # Static Next export (catch-all). Anything not under /api is served from
 # ../frontend/out, handling trailingSlash routes and asset files, falling back
@@ -134,6 +164,9 @@ def capture():
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def static_proxy(path):
+    if path == "api" or path.startswith("api/"):
+        return "Not found", 404
+
     if not os.path.isdir(FRONTEND_OUT):
         return (
             "frontend/out not found. Run a build "

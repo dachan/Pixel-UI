@@ -42,3 +42,29 @@ export async function cameraMetadata(): Promise<CameraMetadata> {
   if (!res.ok) throw new Error(`camera metadata failed: ${res.status}`);
   return res.json();
 }
+
+// --- Exposure controls (ISO + shutter; aperture is fixed on Pi cameras) -----
+
+export type CameraControlsState = {
+  auto_exposure: boolean;
+  iso: number;
+  shutter_us: number;
+};
+
+export async function getControls(): Promise<CameraControlsState> {
+  const res = await fetch(`${BASE}/api/camera/controls`);
+  if (!res.ok) throw new Error(`get controls failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setControls(
+  settings: Partial<CameraControlsState>,
+): Promise<CameraControlsState> {
+  const res = await fetch(`${BASE}/api/camera/controls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`set controls failed: ${res.status}`);
+  return res.json();
+}

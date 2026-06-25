@@ -16,6 +16,23 @@ export async function capture(): Promise<{ filename: string }> {
   return res.json();
 }
 
+export function captureUrl(filename: string): string {
+  return `${BASE}/api/captures/${encodeURIComponent(filename)}`;
+}
+
+export async function listCaptures(): Promise<string[]> {
+  const res = await fetch(`${BASE}/api/captures`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`list captures failed: ${res.status}`);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      "list captures failed: backend returned HTML — restart or redeploy the backend",
+    );
+  }
+  const data: { captures: string[] } = await res.json();
+  return data.captures;
+}
+
 // --- Camera metadata --------------------------------------------------------
 
 export type ControlRange = {

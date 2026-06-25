@@ -57,6 +57,17 @@ def _jsonable(value):
     return str(value)
 
 
+def _live_exposure_from_metadata(meta: dict) -> tuple[int | None, int | None]:
+    """Map frame metadata to ``(iso, shutter_us)`` for auto-exposure display."""
+    iso = shutter = None
+    gain = meta.get("AnalogueGain")
+    if gain is not None:
+        iso = max(100, int(round(float(gain) * 100)))
+    exposure = meta.get("ExposureTime")
+    if exposure is not None:
+        shutter = max(1, int(exposure))
+    return iso, shutter
+
 class BaseCamera(abc.ABC):
     """Interface shared by the mock and real cameras."""
 
@@ -115,7 +126,7 @@ class MockCamera(BaseCamera):
 
     def __init__(self):
         # Exposure state, mirrored from set_controls so the UI is testable.
-        self._auto_exposure = True
+        self._auto_exposure = False
         self._exposure_us = 10000   # 1/100 s
         self._gain = 1.0            # ISO 100
 
@@ -159,11 +170,18 @@ class MockCamera(BaseCamera):
         return self.controls_state()
 
     def controls_state(self) -> dict:
-        return {
+        state = {
             "auto_exposure": self._auto_exposure,
             "iso": int(round(self._gain * 100)),
             "shutter_us": self._exposure_us,
         }
+        if self._auto_exposure:
+            iso, shutter = _live_exposure_from_metadata(self.metadata())
+            if iso is not None:
+                state["iso"] = iso
+            if shutter is not None:
+                state["shutter_us"] = shutter
+        return state
 
     def stream(self):
         interval = 1.0 / self.FPS
@@ -274,8 +292,9 @@ class RealCamera(BaseCamera):
         self._output = self.StreamingOutput()
         self._picam2.start_recording(MJPEGEncoder(), FileOutput(self._output))
 
-        # Exposure state echoed back to clients (defaults: auto).
-        self._state = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
+        # Exposure state echoed back to clients (defaults: manual).
+        self._state = {"auto_exposure": False, "iso": 100, "shutter_us": 10000}
+        self.set_controls(self._state)
 
     def stream(self):
         while True:
@@ -337,7 +356,14 @@ class RealCamera(BaseCamera):
         return self.controls_state()
 
     def controls_state(self) -> dict:
-        return dict(self._state)
+        state = dict(self._state)
+        if state["auto_exposure"]:
+            iso, shutter = _live_exposure_from_metadata(self.metadata())
+            if iso is not None:
+                state["iso"] = iso
+            if shutter is not None:
+                state["shutter_us"] = shutter
+        return state
 
 
 def get_camera() -> BaseCamera:

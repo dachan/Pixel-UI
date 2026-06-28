@@ -164,6 +164,17 @@ def _read_pi_temperatures():
             label = os.path.basename(zone)
         temps[label] = celsius
         seen.add(celsius)
+
+    if not temps and os.environ.get("CAMERA") != "real":
+        # Mock dev (no /sys/class/thermal, e.g. macOS): synthesize a plausible,
+        # slowly wobbling CPU temperature so the panel is visible and testable
+        # off-Pi, mirroring MockCamera's synthesized metadata.
+        import math
+        import time
+
+        wobble = math.sin(time.time() * 0.3) * 0.5 + 0.5  # 0..1
+        temps["cpu-thermal"] = round(45.0 + wobble * 10.0, 1)
+
     return temps
 
 

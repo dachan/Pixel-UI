@@ -123,6 +123,20 @@ def camera_controls():
         return jsonify(error=str(exc)), 503
 
 
+@app.route("/api/camera/orientation", methods=["GET", "POST"])
+def camera_orientation():
+    """GET the capture orientation; POST {rotation} (degrees clockwise) to set."""
+    try:
+        if request.method == "POST":
+            settings = request.get_json(silent=True) or {}
+            return jsonify(camera.set_orientation(settings))
+        return jsonify(camera.get_orientation())
+    except ValueError as exc:  # invalid rotation value
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=str(exc)), 503
+
+
 @app.route("/api/capture", methods=["POST"])
 def capture():
     os.makedirs(CAPTURES_DIR, exist_ok=True)

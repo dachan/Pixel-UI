@@ -71,6 +71,44 @@ def _live_exposure_from_metadata(meta: dict) -> tuple[int | None, int | None]:
 class BaseCamera(abc.ABC):
     """Interface shared by the mock and real cameras."""
 
+    # Allowed capture rotations, in degrees clockwise.
+    ROTATIONS = (0, 90, 180, 270)
+
+    def __init__(self):
+        # Rotation (degrees clockwise) applied to captured stills.
+        self._rotation = 0
+
+    def get_orientation(self) -> dict:
+        """Return the current capture orientation: ``{"rotation": int}``."""
+        return {"rotation": getattr(self, "_rotation", 0)}
+
+    def set_orientation(self, settings: dict) -> dict:
+        """Set capture rotation (degrees clockwise; one of :attr:`ROTATIONS`)."""
+        rotation = settings.get("rotation")
+        if rotation is not None:
+            rotation = int(rotation) % 360
+            if rotation not in self.ROTATIONS:
+                raise ValueError(
+                    f"rotation must be one of {self.ROTATIONS}, got {rotation}"
+                )
+            self._rotation = rotation
+        return self.get_orientation()
+
+    def _rotate_jpeg(self, data: bytes) -> bytes:
+        """Apply the current rotation to encoded JPEG ``data``; no-op at 0°."""
+        rotation = getattr(self, "_rotation", 0)
+        if not rotation:
+            return data
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data))
+        # PIL rotates counter-clockwise; negate for clockwise. expand keeps the
+        # full frame when the aspect ratio flips (90/270).
+        rotated = img.rotate(-rotation, expand=True).convert("RGB")
+        buf = io.BytesIO()
+        rotated.save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
+
     @abc.abstractmethod
     def stream(self):
         """Yield raw JPEG bytes (one complete frame per iteration)."""
@@ -125,6 +163,7 @@ class MockCamera(BaseCamera):
     FPS = 10
 
     def __init__(self):
+        super().__init__()
         # Exposure state, mirrored from set_controls so the UI is testable.
         self._auto_exposure = False
         self._exposure_us = 10000   # 1/100 s
@@ -194,7 +233,7 @@ class MockCamera(BaseCamera):
 
     def capture(self, path: str) -> None:
         with open(path, "wb") as f:
-            f.write(self._render_frame())
+            f.write(self._rotate_jpeg(self._render_frame()))
 
     def info(self) -> dict:
         # A representative slice of what a real Pi sensor reports, so the UI can
@@ -276,6 +315,7 @@ class RealCamera(BaseCamera):
             return len(buf)
 
     def __init__(self):
+        super().__init__()
         # Lazy, Pi-only imports — never at module scope (see module docstring).
         from picamera2 import Picamera2
         from picamera2.encoders import MJPEGEncoder
@@ -308,7 +348,15 @@ class RealCamera(BaseCamera):
         # Still capture using a separate request; works while recording.
         request = self._picam2.capture_request()
         try:
-            request.save("main", path)
+            rotation = getattr(self, "_rotation", 0)
+            if rotation:
+                # make_image() returns a PIL image; rotate clockwise and save.
+                img = request.make_image("main").convert("RGB")
+                img.rotate(-rotation, expand=True).save(
+                    path, format="JPEG", quality=90
+                )
+            else:
+                request.save("main", path)
         finally:
             request.release()
 

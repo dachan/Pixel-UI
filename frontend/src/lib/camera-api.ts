@@ -85,3 +85,27 @@ export async function setControls(
   if (!res.ok) throw new Error(`set controls failed: ${res.status}`);
   return res.json();
 }
+
+// --- Orientation (rotation applied to captured images) ----------------------
+
+export type CameraOrientation = {
+  rotation: number; // degrees clockwise: 0 | 90 | 180 | 270
+};
+
+export async function getOrientation(): Promise<CameraOrientation> {
+  const res = await fetch(`${BASE}/api/camera/orientation`);
+  if (!res.ok) throw new Error(`get orientation failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setOrientation(
+  settings: Partial<CameraOrientation>,
+): Promise<CameraOrientation> {
+  const res = await fetch(`${BASE}/api/camera/orientation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`set orientation failed: ${res.status}`);
+  return res.json();
+}

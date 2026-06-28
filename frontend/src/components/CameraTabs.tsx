@@ -5,12 +5,14 @@ import { CameraPreview } from "@/components/CaptureView";
 import CameraControls from "@/components/CameraControls";
 import CameraMeta from "@/components/CameraMeta";
 import CaptureGallery from "@/components/CaptureGallery";
+import CameraSettings from "@/components/CameraSettings";
 import Tabs from "@/components/Tabs";
 
 const TABS = [
   { id: "camera", label: "Camera" },
   { id: "meta", label: "Meta" },
   { id: "gallery", label: "Gallery" },
+  { id: "settings", label: "Settings" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -34,8 +36,10 @@ export default function CameraTabs() {
           </div>
         ) : active === "meta" ? (
           <CameraMeta />
-        ) : (
+        ) : active === "gallery" ? (
           <CaptureGallery />
+        ) : (
+          <CameraSettings />
         )}
       </div>
     </div>

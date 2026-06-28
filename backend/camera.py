@@ -95,7 +95,11 @@ class BaseCamera(abc.ABC):
         return self.get_orientation()
 
     def _rotate_jpeg(self, data: bytes) -> bytes:
-        """Apply the current rotation to encoded JPEG ``data``; no-op at 0°."""
+        """Apply the current rotation to encoded JPEG ``data``; no-op at 0°.
+
+        Used for both preview frames and captured stills so the saved image
+        matches what the live preview shows.
+        """
         rotation = getattr(self, "_rotation", 0)
         if not rotation:
             return data
@@ -226,7 +230,7 @@ class MockCamera(BaseCamera):
         interval = 1.0 / self.FPS
         while True:
             start = time.time()
-            yield self._render_frame()
+            yield self._rotate_jpeg(self._render_frame())
             elapsed = time.time() - start
             if elapsed < interval:
                 time.sleep(interval - elapsed)
@@ -342,7 +346,10 @@ class RealCamera(BaseCamera):
                 self._output.condition.wait()
                 frame = self._output.frame
             if frame is not None:
-                yield frame
+                # Rotate to match the configured sensor rotation. At 0° this is
+                # a no-op pass-through (no re-encode), so there is no overhead
+                # unless a rotation is actually selected.
+                yield self._rotate_jpeg(frame)
 
     def capture(self, path: str) -> None:
         # Still capture using a separate request; works while recording.

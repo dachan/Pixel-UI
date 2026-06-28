@@ -26,7 +26,7 @@ export default function CameraSettings() {
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
-      <section className="flex max-w-md flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-bold text-zinc-300">Sensor rotation</h2>
           <p className="text-xs text-zinc-500">
@@ -36,7 +36,9 @@ export default function CameraSettings() {
         </div>
 
         {error ? (
-          <p className="text-sm text-red-500">Orientation unavailable: {error}</p>
+          <p className="text-sm text-red-500">
+            Orientation unavailable: {error}
+          </p>
         ) : (
           <div className="grid grid-cols-4 gap-2">
             {ROTATIONS.map((rot) => {

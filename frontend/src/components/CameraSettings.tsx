@@ -6,12 +6,22 @@ import {
   setOrientation,
   getQuality,
   setQuality as saveQuality,
+  getFormat,
+  setFormat as saveFormat,
   systemTemperature,
+  type CaptureFormatValue,
   type SystemTemperatures,
 } from "@/lib/camera-api";
 
 // Capture rotations offered in the UI (degrees clockwise).
 const ROTATIONS = [0, 90, 180, 270] as const;
+
+// Capture formats offered in the UI, with friendly labels + descriptions.
+const FORMATS: { value: CaptureFormatValue; label: string; hint: string }[] = [
+  { value: "jpeg", label: "JPEG", hint: "Compressed photo only." },
+  { value: "raw+jpeg", label: "RAW + JPEG", hint: "DNG raw plus a JPEG preview." },
+  { value: "raw", label: "RAW", hint: "DNG raw only — not shown in Gallery." },
+];
 
 // Friendlier names for known thermal-zone labels.
 function tempLabel(raw: string): string {
@@ -22,6 +32,7 @@ function tempLabel(raw: string): string {
 export default function CameraSettings() {
   const [rotation, setRotation] = useState<number | null>(null);
   const [quality, setQuality] = useState<number | null>(null);
+  const [format, setFormat] = useState<CaptureFormatValue | null>(null);
   const [temps, setTemps] = useState<SystemTemperatures | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +45,12 @@ export default function CameraSettings() {
   useEffect(() => {
     getQuality()
       .then((q) => setQuality(q.quality))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  useEffect(() => {
+    getFormat()
+      .then((f) => setFormat(f.format))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
@@ -64,6 +81,14 @@ export default function CameraSettings() {
     setError(null);
     saveQuality({ quality: q })
       .then((s) => setQuality(s.quality))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }
+
+  function applyFormat(f: CaptureFormatValue) {
+    setFormat(f); // optimistic
+    setError(null);
+    saveFormat({ format: f })
+      .then((s) => setFormat(s.format))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }
 
@@ -135,6 +160,45 @@ export default function CameraSettings() {
               <span className="w-8 text-right font-mono text-sm text-zinc-100">
                 {quality}
               </span>
+            </div>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-bold text-zinc-300">Capture format</h2>
+            <p className="text-sm text-zinc-500">
+              RAW saves an unprocessed .dng for editing. Browsers can&apos;t
+              preview DNG, so RAW-only photos won&apos;t appear in the Gallery.
+            </p>
+          </div>
+          {format === null ? (
+            <p className="text-sm text-zinc-500">loading…</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {FORMATS.map((f) => {
+                const active = format === f.value;
+                return (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => applyFormat(f.value)}
+                    title={f.hint}
+                    className={`flex flex-col gap-1 rounded-xl border p-3 text-left transition ${
+                      active
+                        ? "border-blue-500 bg-blue-600 text-white"
+                        : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    }`}
+                  >
+                    <span className="text-sm font-bold">{f.label}</span>
+                    <span
+                      className={`text-xs ${active ? "text-blue-100" : "text-zinc-500"}`}
+                    >
+                      {f.hint}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </section>

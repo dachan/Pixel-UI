@@ -57,6 +57,53 @@ def _jsonable(value):
     return str(value)
 
 
+# Rotation (degrees clockwise) -> EXIF/TIFF Orientation tag value. Raw DNG data
+# is stored in native sensor orientation (rotating the Bayer grid would corrupt
+# the colour mosaic); instead the Orientation tag tells raw editors how to show
+# it, matching the rotation baked into the JPEG.
+_EXIF_ORIENTATION = {0: 1, 90: 6, 180: 3, 270: 8}
+
+
+def _set_dng_orientation(path: str, rotation: int) -> bool:
+    """Patch the Orientation tag of a DNG (TIFF) in place. Best-effort.
+
+    Rewrites the existing IFD0 Orientation tag (0x0112) value rather than adding
+    a tag, so the file isn't restructured. Returns True if it was set.
+    """
+    import struct
+
+    orientation = _EXIF_ORIENTATION.get(int(rotation) % 360)
+    if orientation is None:
+        return False
+    try:
+        with open(path, "r+b") as f:
+            header = f.read(8)
+            if len(header) < 8:
+                return False
+            if header[:2] == b"II":
+                bo = "<"
+            elif header[:2] == b"MM":
+                bo = ">"
+            else:
+                return False
+            if struct.unpack(bo + "H", header[2:4])[0] != 42:  # standard TIFF
+                return False
+            ifd_off = struct.unpack(bo + "I", header[4:8])[0]
+            f.seek(ifd_off)
+            n = struct.unpack(bo + "H", f.read(2))[0]
+            for i in range(n):
+                entry_off = ifd_off + 2 + i * 12
+                f.seek(entry_off)
+                tag = struct.unpack(bo + "H", f.read(2))[0]
+                if tag == 0x0112:  # Orientation (SHORT, stored inline)
+                    f.seek(entry_off + 8)
+                    f.write(struct.pack(bo + "H", orientation))
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _live_exposure_from_metadata(meta: dict) -> tuple[int | None, int | None]:
     """Map frame metadata to ``(iso, shutter_us)`` for auto-exposure display."""
     iso = shutter = None
@@ -76,12 +123,16 @@ class BaseCamera(abc.ABC):
     # JPEG quality bounds for saved captures.
     QUALITY_MIN = 1
     QUALITY_MAX = 100
+    # Capture formats: "jpeg" (only), "raw+jpeg" (DNG + JPEG), "raw" (DNG only).
+    FORMATS = ("jpeg", "raw+jpeg", "raw")
 
     def __init__(self):
         # Rotation (degrees clockwise) applied to captured stills.
         self._rotation = 0
         # JPEG quality (1..100) for saved captures.
         self._quality = 100
+        # Capture format (one of FORMATS).
+        self._format = "jpeg"
 
     def get_orientation(self) -> dict:
         """Return the current capture orientation: ``{"rotation": int}``."""
@@ -116,6 +167,32 @@ class BaseCamera(abc.ABC):
             self._quality = quality
         return self.get_quality()
 
+    def get_format(self) -> dict:
+        """Return the current capture format: ``{"format": str}``."""
+        return {"format": getattr(self, "_format", "jpeg")}
+
+    def set_format(self, settings: dict) -> dict:
+        """Set the capture format (one of :attr:`FORMATS`)."""
+        fmt = settings.get("format")
+        if fmt is not None:
+            if fmt not in self.FORMATS:
+                raise ValueError(
+                    f"format must be one of {self.FORMATS}, got {fmt!r}"
+                )
+            self._format = fmt
+        return self.get_format()
+
+    def _capture_targets(self, path: str):
+        """Resolve which files a capture should write for the current format.
+
+        ``path`` is the JPEG path. Returns ``(save_jpeg, jpeg_path, save_raw,
+        dng_path)``. The DNG sits next to the JPEG with a ``.dng`` extension.
+        """
+        fmt = getattr(self, "_format", "jpeg")
+        dng_path = os.path.splitext(path)[0] + ".dng"
+        return (fmt in ("jpeg", "raw+jpeg"), path,
+                fmt in ("raw", "raw+jpeg"), dng_path)
+
     def _rotate_jpeg(self, data: bytes) -> bytes:
         """Apply the current rotation to encoded JPEG ``data``; no-op at 0°.
 
@@ -141,8 +218,13 @@ class BaseCamera(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def capture(self, path: str) -> None:
-        """Capture a single still and write it to ``path`` as JPEG."""
+    def capture(self, path: str) -> dict:
+        """Capture a still, writing files per the current format.
+
+        ``path`` is the JPEG path; a raw capture writes a sibling ``.dng``.
+        Returns ``{"files": [basenames...], "preview": <jpeg basename or None>}``
+        — ``preview`` is what the gallery can display (None for raw-only).
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -257,16 +339,32 @@ class MockCamera(BaseCamera):
             if elapsed < interval:
                 time.sleep(interval - elapsed)
 
-    def capture(self, path: str) -> None:
+    def capture(self, path: str) -> dict:
         from PIL import Image
 
-        img = Image.open(io.BytesIO(self._render_frame()))
-        rotation = getattr(self, "_rotation", 0)
-        if rotation:
-            img = img.rotate(-rotation, expand=True)
-        img.convert("RGB").save(
-            path, format="JPEG", quality=getattr(self, "_quality", 100)
-        )
+        save_jpeg, jpeg_path, save_raw, dng_path = self._capture_targets(path)
+        files = []
+        preview = None
+
+        frame = self._render_frame()
+        if save_jpeg:
+            img = Image.open(io.BytesIO(frame))
+            rotation = getattr(self, "_rotation", 0)
+            if rotation:
+                img = img.rotate(-rotation, expand=True)
+            img.convert("RGB").save(
+                jpeg_path, format="JPEG", quality=getattr(self, "_quality", 100)
+            )
+            files.append(os.path.basename(jpeg_path))
+            preview = os.path.basename(jpeg_path)
+        if save_raw:
+            # No real sensor off-Pi — write the synthesized frame as a stand-in
+            # so the format toggle and file flow are testable in dev. On the Pi,
+            # RealCamera writes a genuine DNG.
+            with open(dng_path, "wb") as f:
+                f.write(frame)
+            files.append(os.path.basename(dng_path))
+        return {"files": files, "preview": preview}
 
     def info(self) -> dict:
         # A representative slice of what a real Pi sensor reports, so the UI can
@@ -356,6 +454,7 @@ class RealCamera(BaseCamera):
 
         self._Picamera2 = Picamera2
         self._picam2 = Picamera2()
+        self._camera_lock = threading.RLock()
 
         video_config = self._picam2.create_video_configuration(
             main={"size": (self.WIDTH, self.HEIGHT)}
@@ -364,11 +463,14 @@ class RealCamera(BaseCamera):
 
         # Full-sensor still configuration for high-resolution captures. The
         # streaming/main config above is only 1280x720; captures briefly switch
-        # to this (defaults to the sensor's maximum resolution) instead.
-        self._still_config = self._picam2.create_still_configuration()
+        # to this (defaults to the sensor's maximum resolution) instead. The
+        # raw stream is included so DNG (raw) captures are available on demand.
+        self._still_config = self._picam2.create_still_configuration(raw={})
 
         self._output = self.StreamingOutput()
-        self._picam2.start_recording(MJPEGEncoder(), FileOutput(self._output))
+        self._encoder = MJPEGEncoder()
+        self._file_output = FileOutput(self._output)
+        self._picam2.start_recording(self._encoder, self._file_output)
 
         # Exposure state echoed back to clients (defaults: auto).
         self._state = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
@@ -385,22 +487,44 @@ class RealCamera(BaseCamera):
                 # unless a rotation is actually selected.
                 yield self._rotate_jpeg(frame)
 
-    def capture(self, path: str) -> None:
-        # Full-resolution still: briefly switch to the full-sensor still
-        # configuration, capture, then the camera returns to the streaming
-        # config. The live preview pauses for the capture and resumes after.
-        request = self._picam2.switch_mode_and_capture_request(self._still_config)
-        try:
-            img = request.make_image("main")
-            rotation = getattr(self, "_rotation", 0)
-            if rotation:
-                # PIL rotates counter-clockwise; negate for clockwise.
-                img = img.rotate(-rotation, expand=True)
-            img.convert("RGB").save(
-                path, format="JPEG", quality=getattr(self, "_quality", 100)
-            )
-        finally:
-            request.release()
+    def capture(self, path: str) -> dict:
+        save_jpeg, jpeg_path, save_raw, dng_path = self._capture_targets(path)
+        files = []
+        preview = None
+        # switch_mode_and_capture_request deadlocks if MJPEG recording is still
+        # active — stop the encoder first, capture, then resume the stream.
+        with self._camera_lock:
+            self._picam2.stop_recording()
+            try:
+                request = self._picam2.switch_mode_and_capture_request(
+                    self._still_config
+                )
+                try:
+                    if save_jpeg:
+                        img = request.make_image("main")
+                        rotation = getattr(self, "_rotation", 0)
+                        if rotation:
+                            # PIL rotates counter-clockwise; negate for clockwise.
+                            img = img.rotate(-rotation, expand=True)
+                        img.convert("RGB").save(
+                            path, format="JPEG",
+                            quality=getattr(self, "_quality", 100),
+                        )
+                        files.append(os.path.basename(jpeg_path))
+                        preview = os.path.basename(jpeg_path)
+                    if save_raw:
+                        # Raw Bayer data straight from the sensor — stored in
+                        # native orientation (rotating the mosaic would corrupt
+                        # colour); rotation is recorded as the DNG Orientation
+                        # tag so raw editors display it like the JPEG.
+                        request.save_dng(dng_path)
+                        _set_dng_orientation(dng_path, getattr(self, "_rotation", 0))
+                        files.append(os.path.basename(dng_path))
+                finally:
+                    request.release()
+            finally:
+                self._picam2.start_recording(self._encoder, self._file_output)
+        return {"files": files, "preview": preview}
 
     def info(self) -> dict:
         # camera_controls maps name -> (min, max, default).
@@ -421,7 +545,8 @@ class RealCamera(BaseCamera):
         }
 
     def metadata(self) -> dict:
-        return _jsonable(dict(self._picam2.capture_metadata()))
+        with self._camera_lock:
+            return _jsonable(dict(self._picam2.capture_metadata()))
 
     def set_controls(self, settings: dict) -> dict:
         if settings.get("auto_exposure") is not None:
@@ -431,18 +556,19 @@ class RealCamera(BaseCamera):
         if settings.get("shutter_us") is not None:
             self._state["shutter_us"] = max(1, int(settings["shutter_us"]))
 
-        if self._state["auto_exposure"]:
-            # Hand exposure back to the auto-exposure algorithm.
-            self._picam2.set_controls({"AeEnable": True})
-        else:
-            # Manual: disable AE and pin gain (ISO/100) + exposure time.
-            self._picam2.set_controls(
-                {
-                    "AeEnable": False,
-                    "AnalogueGain": self._state["iso"] / 100.0,
-                    "ExposureTime": self._state["shutter_us"],
-                }
-            )
+        with self._camera_lock:
+            if self._state["auto_exposure"]:
+                # Hand exposure back to the auto-exposure algorithm.
+                self._picam2.set_controls({"AeEnable": True})
+            else:
+                # Manual: disable AE and pin gain (ISO/100) + exposure time.
+                self._picam2.set_controls(
+                    {
+                        "AeEnable": False,
+                        "AnalogueGain": self._state["iso"] / 100.0,
+                        "ExposureTime": self._state["shutter_us"],
+                    }
+                )
         return self.controls_state()
 
     def controls_state(self) -> dict:

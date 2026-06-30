@@ -198,13 +198,30 @@ def camera_quality():
         return jsonify(error=str(exc)), 503
 
 
+@app.route("/api/camera/format", methods=["GET", "POST"])
+def camera_format():
+    """GET the capture format; POST {format} (jpeg|raw+jpeg|raw) to set."""
+    try:
+        if request.method == "POST":
+            settings = request.get_json(silent=True) or {}
+            return jsonify(camera.set_format(settings))
+        return jsonify(camera.get_format())
+    except ValueError as exc:  # invalid format value
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        return jsonify(error=str(exc)), 503
+
+
 @app.route("/api/capture", methods=["POST"])
 def capture():
     os.makedirs(CAPTURES_DIR, exist_ok=True)
-    filename = datetime.now().strftime("capture-%Y%m%d-%H%M%S-%f") + ".jpg"
-    path = os.path.join(CAPTURES_DIR, filename)
-    camera.capture(path)
-    return jsonify(filename=filename)
+    base = datetime.now().strftime("capture-%Y%m%d-%H%M%S-%f")
+    path = os.path.join(CAPTURES_DIR, base + ".jpg")
+    result = camera.capture(path)
+    files = result.get("files", [])
+    # Prefer the previewable (JPEG) file; fall back to whatever was saved.
+    filename = result.get("preview") or (files[0] if files else None)
+    return jsonify(filename=filename, files=files)
 
 
 @app.route("/api/captures")
@@ -222,12 +239,20 @@ def list_captures():
 
 @app.route("/api/captures/<path:filename>")
 def get_capture(filename):
-    """Serve a single captured JPEG."""
-    if os.path.basename(filename) != filename or not filename.endswith(".jpg"):
+    """Serve a single captured JPEG (inline) or DNG raw (download)."""
+    if os.path.basename(filename) != filename:
+        return "Not found", 404
+    is_jpeg = filename.endswith(".jpg")
+    is_dng = filename.endswith(".dng")
+    if not (is_jpeg or is_dng):
         return "Not found", 404
     path = os.path.join(CAPTURES_DIR, filename)
     if not os.path.isfile(path):
         return "Not found", 404
+    if is_dng:
+        # DNG can't render in a browser; offer it as a download instead.
+        return send_file(path, mimetype="image/x-adobe-dng",
+                         as_attachment=True, download_name=filename)
     return send_file(path, mimetype="image/jpeg")
 
 # --------------------------------------------------------------------------- #

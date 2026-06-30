@@ -146,3 +146,29 @@ export async function setQuality(
   if (!res.ok) throw new Error(`set quality failed: ${res.status}`);
   return res.json();
 }
+
+// --- Capture format (JPEG / RAW+JPEG / RAW DNG) -----------------------------
+
+export type CaptureFormatValue = "jpeg" | "raw+jpeg" | "raw";
+
+export type CaptureFormat = {
+  format: CaptureFormatValue;
+};
+
+export async function getFormat(): Promise<CaptureFormat> {
+  const res = await fetch(`${BASE}/api/camera/format`);
+  if (!res.ok) throw new Error(`get format failed: ${res.status}`);
+  return res.json();
+}
+
+export async function setFormat(
+  settings: Partial<CaptureFormat>,
+): Promise<CaptureFormat> {
+  const res = await fetch(`${BASE}/api/camera/format`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`set format failed: ${res.status}`);
+  return res.json();
+}

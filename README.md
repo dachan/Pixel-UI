@@ -7,6 +7,14 @@ deploy to a Pi 5 (Bookworm 64-bit, Wayland/labwc) where it runs as a service
 
 Code only ever flows **Mac → Pi**. The Pi is a runtime, not a dev box.
 
+> **This repo is public / open-source.** Write everything — code, comments,
+> commit messages, docs, scripts — assuming it will be read by strangers. No
+> secrets, credentials, tokens, or private keys in tracked files; no personal
+> hostnames, usernames, IP addresses, emails, or absolute home paths. Use
+> generic placeholders (`pi@raspberrypi.local`, `/home/<user>/…`) and keep your
+> real values in the gitignored `deploy.env`. Prefer config/env vars over
+> hardcoding anything machine-specific.
+
 ## Architecture
 
 ```
@@ -166,6 +174,39 @@ To turn kiosk mode back off later, remove the `lwrespawn` line from
 
 > Note: `deploy.sh` syncs `backend/` and `frontend/out/` but not `kiosk.sh`.
 > Copy `_deploy/kiosk.sh` to `~/kiosk.sh` on the Pi yourself (it rarely changes).
+
+## Pi cheat-sheet (from the Mac)
+
+All commands run from the Mac. Replace `pi@raspberrypi.local` with your Pi's
+user and host (the same values you set in `deploy.env`). They're password-free
+once you've set up SSH keys one time:
+
+```bash
+ssh-copy-id pi@raspberrypi.local    # one-time; last time you'll type the Pi password
+```
+
+**SSH into the Pi:**
+```bash
+ssh pi@raspberrypi.local
+```
+
+**Copy captures to the Mac** (dated folder in Downloads; pulls JPEG + RAW DNG):
+```bash
+DEST=~/Downloads/pi-captures-$(date +%Y%m%d); mkdir -p "$DEST"
+rsync -av pi@raspberrypi.local:~/ir-cam/captures/ "$DEST/"
+# only JPEGs: add  --include='*.jpg' --exclude='*'   (or '*.dng' for raw only)
+```
+
+**Start the kiosk** (into the Pi's running desktop session; add `pkill -f
+chromium;` first to replace an existing one):
+```bash
+ssh pi@raspberrypi.local 'export WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$(id -u); ~/kiosk.sh >/dev/null 2>&1 &'
+```
+
+**Power off cleanly:**
+```bash
+ssh pi@raspberrypi.local 'sudo poweroff'
+```
 
 ## Troubleshooting
 

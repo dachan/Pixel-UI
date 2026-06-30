@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+  labwc config for the Pi kiosk.
+
+  The <touch> rule deliberately has NO deviceName: it applies to ALL touch
+  devices. This is the durable fix for swipe-to-scroll on a touchscreen kiosk.
+
+  Why no deviceName: a DSI touch panel often enumerates with a name like
+  "11-0038 generic ft5x06 (NN)" whose "(NN)" suffix is assigned by libinput and
+  CHANGES across reboots/re-enumeration. Pinning an exact name means the rule
+  silently stops matching after a reboot, labwc falls back to its default
+  (mouseEmulation ON), touch swipes become mouse click-drags, and Chromium —
+  which only scrolls on real touch — stops scrolling. Matching all touch devices
+  avoids that entirely.
+
+  mouseEmulation="no" -> deliver native wl_touch events to Chromium (so swipe
+  scrolls). mapToOutput="DSI-2" -> map touch coordinates to the panel; change
+  this to your output name (see `wlr-randr`) if your display isn't "DSI-2".
+
+  Install to ~/.config/labwc/rc.xml on the Pi; a reboot (or full labwc restart)
+  is required for touch-input config to take effect — a live SIGHUP reconfigure
+  does NOT re-apply it.
+-->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <touch mapToOutput="DSI-2" mouseEmulation="no"/>
+</openbox_config>

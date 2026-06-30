@@ -55,6 +55,9 @@ sed -e "s|__PI_USER__|${PI_USER}|g" \
     _deploy/ircam-api.service.tpl > "${RENDERED_SERVICE}"
 rsync -az "${RENDERED_SERVICE}" "${PI_TARGET}:${PI_DIR}/ircam-api.service"
 
+# labwc kiosk config (device-agnostic touch rule for swipe-to-scroll).
+rsync -az _deploy/labwc-rc.xml "${PI_TARGET}:${PI_DIR}/labwc-rc.xml"
+
 echo "==> [3/3] Installing deps, restarting service"
 ssh "${PI_TARGET}" bash -s <<EOF
 set -euo pipefail
@@ -72,6 +75,16 @@ if ! systemctl list-unit-files | grep -q '^ircam-api.service'; then
   sudo systemctl enable ircam-api.service
 fi
 sudo systemctl restart ircam-api.service
+
+# Install the labwc touch config if it differs; touch-input config only takes
+# effect after a compositor restart, so flag a reboot when it changes.
+mkdir -p ~/.config/labwc
+if ! cmp -s "${PI_DIR}/labwc-rc.xml" ~/.config/labwc/rc.xml 2>/dev/null; then
+  [ -f ~/.config/labwc/rc.xml ] && cp ~/.config/labwc/rc.xml ~/.config/labwc/rc.xml.bak
+  cp "${PI_DIR}/labwc-rc.xml" ~/.config/labwc/rc.xml
+  echo "REBOOT_REQUIRED: labwc touch config updated (run: sudo reboot)"
+fi
 EOF
 
 echo "==> Done. App live at http://${PI_HOST}:5000"
+echo "    If the deploy printed REBOOT_REQUIRED, reboot the Pi to apply touch config."

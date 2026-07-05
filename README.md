@@ -41,6 +41,12 @@ pi-xel/
 - `picamera2` is imported lazily inside `RealCamera.__init__` and is **not** in
   `requirements.txt`; on the Pi it comes from apt via a `--system-site-packages`
   venv. This is what lets the backend import cleanly on the Mac.
+- A physical shutter button is optional: when `CAMERA=real`, `app.py` starts a
+  `gpiozero`-based listener (`backend/shutter_button.py`) on GPIO17 (BCM,
+  override with `SHUTTER_GPIO_PIN`) that triggers the same capture path as the
+  UI. Wire a momentary push button between that pin and GND — no resistor
+  needed, it uses the Pi's internal pull-up. Like picamera2, `gpiozero` is
+  imported lazily and comes from apt, not `requirements.txt`.
 - In production Flask serves the static export from `frontend/out`, so the kiosk
   is single-origin (relative `/api`). In dev the frontend runs on :3000 and
   talks cross-origin to Flask on :5000 (flask-cors handles it).
@@ -106,9 +112,9 @@ deployed service always matches your config.
 > Do these once on a fresh Pi before the first `./scripts/deploy.sh`.
 
 ```bash
-# 1. System packages (picamera2 from apt — do NOT pip install it)
+# 1. System packages (picamera2/gpiozero from apt — do NOT pip install them)
 sudo apt update
-sudo apt install -y python3-picamera2 chromium rsync
+sudo apt install -y python3-picamera2 python3-gpiozero chromium rsync
 
 # 2. App dir + venv WITH system site packages (so picamera2 is importable)
 mkdir -p ~/ir-cam && cd ~/ir-cam

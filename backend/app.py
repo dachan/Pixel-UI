@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 from datetime import datetime
 
 from flask import Flask, Response, jsonify, request, send_file
@@ -53,6 +54,21 @@ CORS(app)
 
 # Single camera instance for the process, chosen by the CAMERA env var.
 camera = get_camera()
+
+
+def _do_capture() -> dict:
+    """Capture a still to CAPTURES_DIR. Shared by the API route and the
+    physical shutter button so both trigger the exact same capture path."""
+    os.makedirs(CAPTURES_DIR, exist_ok=True)
+    base = datetime.now().strftime("capture-%Y%m%d-%H%M%S-%f")
+    path = os.path.join(CAPTURES_DIR, base + ".jpg")
+    return camera.capture(path)
+
+
+if os.environ.get("CAMERA") == "real":
+    from shutter_button import start_shutter_button
+
+    start_shutter_button(_do_capture)
 
 
 # --------------------------------------------------------------------------- #
@@ -184,6 +200,19 @@ def system_temperature():
     return jsonify(temperatures=_read_pi_temperatures())
 
 
+@app.route("/api/system/exit-kiosk", methods=["POST"])
+def exit_kiosk():
+    """Close the kiosk browser and drop to the desktop.
+
+    Stops the labwc respawner first (so Chromium isn't relaunched), then closes
+    only the kiosk browser (matched by its ``--kiosk`` flag, so a normal dev
+    browser is never touched). Same-user pkill, no sudo. No-op off the Pi.
+    """
+    subprocess.run(["pkill", "-f", "lwrespawn"], check=False)
+    subprocess.run(["pkill", "-f", "--", "--kiosk"], check=False)
+    return jsonify(status="exiting")
+
+
 @app.route("/api/camera/quality", methods=["GET", "POST"])
 def camera_quality():
     """GET the capture JPEG quality; POST {quality} (1..100) to set."""
@@ -214,10 +243,7 @@ def camera_format():
 
 @app.route("/api/capture", methods=["POST"])
 def capture():
-    os.makedirs(CAPTURES_DIR, exist_ok=True)
-    base = datetime.now().strftime("capture-%Y%m%d-%H%M%S-%f")
-    path = os.path.join(CAPTURES_DIR, base + ".jpg")
-    result = camera.capture(path)
+    result = _do_capture()
     files = result.get("files", [])
     # Prefer the previewable (JPEG) file; fall back to whatever was saved.
     filename = result.get("preview") or (files[0] if files else None)

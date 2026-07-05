@@ -108,6 +108,57 @@ export function setControls(
   return postJson("/camera/controls", "set controls", settings);
 }
 
+// --- Focus (Camera Module 3 lens motor; absent on fixed-focus cameras) ------
+
+export type FocusState = {
+  available: boolean;
+  af_mode?: "continuous" | "manual";
+  // Dioptres: 0 = infinity, higher = closer. Live AF value in continuous.
+  lens_position?: number;
+  min?: number;
+  max?: number;
+};
+
+export function getFocus(): Promise<FocusState> {
+  return getJson("/camera/focus", "get focus");
+}
+
+export function setFocus(settings: {
+  af_mode?: "continuous" | "manual";
+  lens_position?: number;
+}): Promise<FocusState> {
+  return postJson("/camera/focus", "set focus", settings);
+}
+
+// --- White balance -----------------------------------------------------------
+
+export type WhiteBalanceMode =
+  | "auto"
+  | "incandescent"
+  | "tungsten"
+  | "fluorescent"
+  | "indoor"
+  | "daylight"
+  | "cloudy"
+  | "manual";
+
+export type WhiteBalanceState = {
+  mode: WhiteBalanceMode;
+  // Live AWB gains outside manual mode; the driving values in manual.
+  red_gain: number;
+  blue_gain: number;
+};
+
+export function getWhiteBalance(): Promise<WhiteBalanceState> {
+  return getJson("/camera/wb", "get white balance");
+}
+
+export function setWhiteBalance(
+  settings: Partial<WhiteBalanceState>,
+): Promise<WhiteBalanceState> {
+  return postJson("/camera/wb", "set white balance", settings);
+}
+
 // --- Orientation (rotation applied to captured images) ----------------------
 
 export type CameraOrientation = {

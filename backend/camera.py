@@ -59,6 +59,22 @@ def _jsonable(value):
     return str(value)
 
 
+# libcamera AwbModeEnum values, keyed by the API's white-balance mode names.
+# ("manual" is not an AwbMode — it's AwbEnable=False plus explicit ColourGains.)
+_AWB_MODE_IDS = {
+    "auto": 0,
+    "incandescent": 1,
+    "tungsten": 2,
+    "fluorescent": 3,
+    "indoor": 4,
+    "daylight": 5,
+    "cloudy": 6,
+}
+
+# libcamera AfModeEnum values.
+_AF_MANUAL = 0
+_AF_CONTINUOUS = 2
+
 # Rotation (degrees clockwise) -> EXIF/TIFF Orientation tag value. Raw DNG data
 # is stored in native sensor orientation (rotating the Bayer grid would corrupt
 # the colour mosaic); instead the Orientation tag tells raw editors how to show
@@ -127,6 +143,16 @@ class BaseCamera(abc.ABC):
     QUALITY_MAX = 100
     # Capture formats: "jpeg" (only), "raw+jpeg" (DNG + JPEG), "raw" (DNG only).
     FORMATS = ("jpeg", "raw+jpeg", "raw")
+    # Autofocus modes ("auto" one-shot is deliberately not exposed — on a
+    # kiosk, continuous or a manual lens position covers everything).
+    AF_MODES = ("continuous", "manual")
+    # White-balance modes: libcamera AWB presets plus "manual" colour gains.
+    WB_MODES = ("auto", "incandescent", "tungsten", "fluorescent", "indoor",
+                "daylight", "cloudy", "manual")
+    # Colour gain bounds (hardware allows up to 32; anything much past 8 is
+    # just noise amplification, but the API accepts the full range).
+    GAIN_MIN = 0.1
+    GAIN_MAX = 32.0
 
     def __init__(self):
         # Rotation (degrees clockwise) applied to captured stills.
@@ -135,6 +161,10 @@ class BaseCamera(abc.ABC):
         self._quality = 100
         # Capture format (one of FORMATS).
         self._format = "raw+jpeg"
+        # Focus intent (only meaningful when focus_available()).
+        self._focus = {"af_mode": "continuous", "lens_position": 1.0}
+        # White-balance intent; gains only drive the sensor in "manual".
+        self._wb = {"mode": "auto", "red_gain": 2.0, "blue_gain": 2.0}
         # Settings persistence (see settings_store.py).
         self._store = SettingsStore()
         # Suppress saving while restoring (applying loaded values back).
@@ -191,6 +221,93 @@ class BaseCamera(abc.ABC):
         self._save_settings()
         return self.get_format()
 
+    # --- Focus ---------------------------------------------------------------- #
+    # State + validation live here; pushing values into the sensor is the
+    # subclass hook _apply_focus(). Cameras without a focus motor (e.g. the HQ
+    # camera) override focus_available().
+
+    def focus_available(self) -> bool:
+        """Whether this camera has a controllable focus (lens motor)."""
+        return True
+
+    def _lens_range(self) -> tuple[float, float]:
+        """(min, max) LensPosition in dioptres; 0 = infinity, higher = closer."""
+        return (0.0, 10.0)
+
+    def _apply_focus(self) -> None:
+        """Push self._focus into the sensor. No-op for the mock."""
+
+    def get_focus(self) -> dict:
+        """Focus state: ``{available, af_mode, lens_position, min, max}``.
+
+        In continuous mode ``lens_position`` is the live value the AF
+        algorithm chose (from frame metadata), not the stored manual one.
+        """
+        if not self.focus_available():
+            return {"available": False}
+        lo, hi = self._lens_range()
+        state = {"available": True, "min": lo, "max": hi, **self._focus}
+        if self._focus["af_mode"] == "continuous":
+            live = self.metadata().get("LensPosition")
+            if live is not None:
+                state["lens_position"] = round(float(live), 2)
+        return state
+
+    def set_focus(self, settings: dict) -> dict:
+        """Set ``af_mode`` (continuous|manual) and/or ``lens_position``."""
+        if not self.focus_available():
+            raise ValueError("this camera has no focus control")
+        mode = settings.get("af_mode")
+        if mode is not None:
+            if mode not in self.AF_MODES:
+                raise ValueError(
+                    f"af_mode must be one of {self.AF_MODES}, got {mode!r}"
+                )
+            self._focus["af_mode"] = mode
+        position = settings.get("lens_position")
+        if position is not None:
+            lo, hi = self._lens_range()
+            self._focus["lens_position"] = min(hi, max(lo, float(position)))
+        self._apply_focus()
+        self._save_settings()
+        return self.get_focus()
+
+    # --- White balance ---------------------------------------------------------- #
+
+    def _apply_white_balance(self) -> None:
+        """Push self._wb into the sensor. No-op for the mock."""
+
+    def get_white_balance(self) -> dict:
+        """WB state: ``{mode, red_gain, blue_gain}``.
+
+        Outside "manual", the gains are the live values AWB chose (from frame
+        metadata) — handy as a starting point when switching to manual.
+        """
+        state = dict(self._wb)
+        if self._wb["mode"] != "manual":
+            gains = self.metadata().get("ColourGains")
+            if isinstance(gains, (list, tuple)) and len(gains) == 2:
+                state["red_gain"] = round(float(gains[0]), 2)
+                state["blue_gain"] = round(float(gains[1]), 2)
+        return state
+
+    def set_white_balance(self, settings: dict) -> dict:
+        """Set ``mode`` (one of :attr:`WB_MODES`) and/or manual gains."""
+        mode = settings.get("mode")
+        if mode is not None:
+            if mode not in self.WB_MODES:
+                raise ValueError(
+                    f"mode must be one of {self.WB_MODES}, got {mode!r}"
+                )
+            self._wb["mode"] = mode
+        for key in ("red_gain", "blue_gain"):
+            value = settings.get(key)
+            if value is not None:
+                self._wb[key] = min(self.GAIN_MAX, max(self.GAIN_MIN, float(value)))
+        self._apply_white_balance()
+        self._save_settings()
+        return self.get_white_balance()
+
     # --- Persistence -------------------------------------------------------- #
 
     def _settings_snapshot(self) -> dict:
@@ -199,7 +316,11 @@ class BaseCamera(abc.ABC):
             "rotation": self._rotation,
             "quality": self._quality,
             "format": self._format,
+            # Intent state (not live values): what the user chose.
+            "white_balance": dict(self._wb),
         }
+        if self.focus_available():
+            snap["focus"] = dict(self._focus)
         try:
             snap["controls"] = self.controls_state()
         except Exception:
@@ -225,6 +346,8 @@ class BaseCamera(abc.ABC):
                 ("rotation", lambda v: self.set_orientation({"rotation": v})),
                 ("quality", lambda v: self.set_quality({"quality": v})),
                 ("format", lambda v: self.set_format({"format": v})),
+                ("focus", self.set_focus),
+                ("white_balance", self.set_white_balance),
                 ("controls", self.set_controls),
             ):
                 if key not in data:
@@ -357,12 +480,20 @@ class MockCamera(BaseCamera):
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         draw.text((20, 20), f"MOCK CAMERA  {stamp}", fill=(240, 240, 240))
 
-        # Overlay current exposure settings so control changes are visible.
+        # Overlay current exposure/focus/WB settings so control changes are
+        # visible in the dev stream.
         st = self.controls_state()
         mode = "AUTO" if st["auto_exposure"] else "MANUAL"
         draw.text(
             (20, 40),
             f"{mode}  ISO {st['iso']}  {_shutter_label(st['shutter_us'])}",
+            fill=(120, 230, 160),
+        )
+        focus = self.get_focus()
+        draw.text(
+            (20, 60),
+            f"AF {self._focus['af_mode'].upper()} {focus['lens_position']:.2f}"
+            f"  WB {self._wb['mode'].upper()}",
             fill=(120, 230, 160),
         )
 
@@ -441,6 +572,9 @@ class MockCamera(BaseCamera):
             "controls": {
                 "ExposureTime": {"min": 14, "max": 11767556, "default": None},
                 "AnalogueGain": {"min": 1.0, "max": 16.0, "default": None},
+                "LensPosition": {"min": 0.0, "max": 10.0, "default": 1.0},
+                "AfMode": {"min": 0, "max": 2, "default": 0},
+                "ColourGains": {"min": 0.0, "max": 32.0, "default": None},
                 "ExposureValue": {"min": -8.0, "max": 8.0, "default": 0.0},
                 "Brightness": {"min": -1.0, "max": 1.0, "default": 0.0},
                 "Contrast": {"min": 0.0, "max": 32.0, "default": 1.0},
@@ -463,6 +597,16 @@ class MockCamera(BaseCamera):
         else:
             exposure = self._exposure_us
             gain = round(self._gain, 3)
+        # Manual WB reports the set gains; otherwise AWB "chooses" a wobble.
+        if self._wb["mode"] == "manual":
+            colour_gains = [self._wb["red_gain"], self._wb["blue_gain"]]
+        else:
+            colour_gains = [round(1.4 + wobble * 0.6, 3), round(2.6 - wobble * 0.4, 3)]
+        # Continuous AF "hunts" a little; manual holds the set position.
+        if self._focus["af_mode"] == "continuous":
+            lens_position = round(1.0 + wobble * 2.0, 2)
+        else:
+            lens_position = self._focus["lens_position"]
         return _jsonable(
             {
                 "ExposureTime": exposure,
@@ -470,7 +614,8 @@ class MockCamera(BaseCamera):
                 "DigitalGain": 1.0,
                 "Lux": round(120 + wobble * 380, 1),
                 "ColourTemperature": int(4200 + wobble * 1600),
-                "ColourGains": [round(1.4 + wobble * 0.6, 3), round(2.6 - wobble * 0.4, 3)],
+                "ColourGains": colour_gains,
+                "LensPosition": lens_position,
                 "FocusFoM": int(2000 + wobble * 4000),
                 "FrameDuration": 33333,
                 "SensorTemperature": round(38.0 + wobble * 4.0, 1),
@@ -530,13 +675,16 @@ class RealCamera(BaseCamera):
         self._file_output = FileOutput(self._output)
         self._picam2.start_recording(self._encoder, self._file_output)
 
-        # Exposure state echoed back to clients (defaults: auto). Apply without
+        # Exposure/focus/WB defaults applied to the live sensor. Apply without
         # persisting — restore_settings() (called after construction) loads any
         # saved values and would otherwise be clobbered by these defaults.
         self._state = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
         self._restoring = True
         try:
             self.set_controls(self._state)
+            self._apply_white_balance()
+            if self.focus_available():
+                self._apply_focus()
         finally:
             self._restoring = False
 
@@ -637,6 +785,38 @@ class RealCamera(BaseCamera):
             if shutter is not None:
                 state["shutter_us"] = shutter
         return state
+
+    def focus_available(self) -> bool:
+        # Only cameras with a lens motor (e.g. Camera Module 3) report
+        # LensPosition; fixed-focus modules (HQ, v2) don't.
+        return "LensPosition" in self._picam2.camera_controls
+
+    def _lens_range(self) -> tuple[float, float]:
+        lo, hi, _default = self._picam2.camera_controls["LensPosition"]
+        return (float(lo), float(hi))
+
+    def _apply_focus(self) -> None:
+        with self._camera_lock:
+            if self._focus["af_mode"] == "continuous":
+                self._picam2.set_controls({"AfMode": _AF_CONTINUOUS})
+            else:
+                self._picam2.set_controls({
+                    "AfMode": _AF_MANUAL,
+                    "LensPosition": float(self._focus["lens_position"]),
+                })
+
+    def _apply_white_balance(self) -> None:
+        with self._camera_lock:
+            if self._wb["mode"] == "manual":
+                self._picam2.set_controls({
+                    "AwbEnable": False,
+                    "ColourGains": (self._wb["red_gain"], self._wb["blue_gain"]),
+                })
+            else:
+                self._picam2.set_controls({
+                    "AwbEnable": True,
+                    "AwbMode": _AWB_MODE_IDS[self._wb["mode"]],
+                })
 
 
 def get_camera() -> BaseCamera:

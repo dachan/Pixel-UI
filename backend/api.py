@@ -163,6 +163,31 @@ def camera_format():
     return jsonify(camera.get_format())
 
 
+@api.route("/camera/focus", methods=["GET", "POST"])
+def camera_focus():
+    """GET focus state; POST {af_mode, lens_position} to set.
+
+    ``af_mode`` is continuous|manual; ``lens_position`` is dioptres
+    (0 = infinity, higher = closer). {"available": false} on cameras
+    without a focus motor.
+    """
+    if request.method == "POST":
+        return jsonify(camera.set_focus(request.get_json(silent=True) or {}))
+    return jsonify(camera.get_focus())
+
+
+@api.route("/camera/wb", methods=["GET", "POST"])
+def camera_white_balance():
+    """GET white-balance state; POST {mode, red_gain, blue_gain} to set.
+
+    ``mode`` is an AWB preset (auto/incandescent/tungsten/fluorescent/indoor/
+    daylight/cloudy) or "manual", where the gains drive the sensor directly.
+    """
+    if request.method == "POST":
+        return jsonify(camera.set_white_balance(request.get_json(silent=True) or {}))
+    return jsonify(camera.get_white_balance())
+
+
 # --- System ------------------------------------------------------------------- #
 
 def _read_pi_temperatures():

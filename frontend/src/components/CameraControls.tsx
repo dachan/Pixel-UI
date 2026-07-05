@@ -1,20 +1,52 @@
 "use client";
 
-import { useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import {
   capture,
   getControls,
   setControls,
+  getFocus,
+  setFocus,
+  getWhiteBalance,
+  setWhiteBalance,
   type CameraControlsState,
+  type FocusState,
+  type WhiteBalanceMode,
+  type WhiteBalanceState,
 } from "@/lib/camera-api";
 import { errorMessage } from "@/lib/errors";
 import { usePolling } from "@/lib/use-polling";
 import Tabs from "@/components/Tabs";
 
+const CONTROL_TABS = [
+  { id: "exposure", label: "Exposure" },
+  { id: "focus", label: "Focus" },
+  { id: "wb", label: "WB" },
+] as const;
+
+type ControlTabId = (typeof CONTROL_TABS)[number]["id"];
+
 const EXPOSURE_TABS = [
   { id: "auto", label: "Auto" },
   { id: "manual", label: "Manual" },
 ] as const;
+
+const FOCUS_TABS = [
+  { id: "continuous", label: "Auto" },
+  { id: "manual", label: "Manual" },
+] as const;
+
+// White-balance presets offered in the UI, in rough warm→cool order.
+const WB_PRESETS: { value: WhiteBalanceMode; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "incandescent", label: "Incandescent" },
+  { value: "tungsten", label: "Tungsten" },
+  { value: "fluorescent", label: "Fluorescent" },
+  { value: "indoor", label: "Indoor" },
+  { value: "daylight", label: "Daylight" },
+  { value: "cloudy", label: "Cloudy" },
+  { value: "manual", label: "Manual" },
+];
 
 // Standard shutter speeds (microseconds) the slider steps through.
 const SHUTTER_STEPS = [
@@ -93,13 +125,21 @@ export default function CameraControls({
 }: {
   showCaptureButton?: boolean;
 }) {
+  const [panel, setPanel] = useState<ControlTabId>("exposure");
   const [state, setState] = useState<CameraControlsState>({
     auto_exposure: true,
     iso: 100,
     shutter_us: 10000,
   });
+  const [focus, setFocusState] = useState<FocusState | null>(null);
+  const [wb, setWb] = useState<WhiteBalanceState | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getFocus().then(setFocusState).catch(() => {});
+    getWhiteBalance().then(setWb).catch(() => {});
+  }, []);
 
   // In auto mode, poll so sliders reflect live AE values. (State starts in
   // auto, so the first tick doubles as the initial fetch; if the backend is
@@ -114,11 +154,42 @@ export default function CameraControls({
     state.auto_exposure,
   );
 
+  // Live lens position while continuous AF hunts; live AWB gains outside
+  // manual — only while the relevant panel is visible.
+  usePolling(
+    () => {
+      getFocus().then(setFocusState).catch(() => {});
+    },
+    1000,
+    panel === "focus" && focus?.af_mode === "continuous",
+  );
+  usePolling(
+    () => {
+      getWhiteBalance().then(setWb).catch(() => {});
+    },
+    1000,
+    panel === "wb" && wb !== null && wb.mode !== "manual",
+  );
+
   // Push a change to the backend and adopt the returned (authoritative) state.
   function apply(patch: Partial<CameraControlsState>) {
     setState((prev) => ({ ...prev, ...patch })); // optimistic
     setControls(patch)
       .then(setState)
+      .catch(() => {});
+  }
+
+  function applyFocus(patch: { af_mode?: "continuous" | "manual"; lens_position?: number }) {
+    setFocusState((prev) => (prev ? { ...prev, ...patch } : prev)); // optimistic
+    setFocus(patch)
+      .then(setFocusState)
+      .catch(() => {});
+  }
+
+  function applyWb(patch: Partial<WhiteBalanceState>) {
+    setWb((prev) => (prev ? { ...prev, ...patch } : prev)); // optimistic
+    setWhiteBalance(patch)
+      .then(setWb)
       .catch(() => {});
   }
 
@@ -146,42 +217,145 @@ export default function CameraControls({
 
   return (
     <section className="flex flex-col gap-4 h-full">
-      <div className="flex shrink-0 items-center justify-center">
-        <Tabs
-          tabs={EXPOSURE_TABS}
-          active={manual ? "manual" : "auto"}
-          onChange={(id) => apply({ auto_exposure: id === "auto" })}
-        />
+      <div className="shrink-0">
+        <Tabs tabs={CONTROL_TABS} active={panel} onChange={setPanel} />
       </div>
 
-      <div className="flex justify-around h-full overflow-hidden gap-2">
-        <SliderControl label="Shutter" value={shutterLabel(state.shutter_us)}>
-          <VerticalSlider
-            min={0}
-            max={SHUTTER_STEPS.length - 1}
-            step={1}
-            value={shutterIdx}
-            disabled={!manual}
-            onChange={(e) =>
-              apply({ shutter_us: SHUTTER_STEPS[Number(e.target.value)] })
-            }
-          />
-        </SliderControl>
+      <div className="min-h-0 flex-1">
+        {panel === "exposure" ? (
+          <div className="flex h-full flex-col gap-4">
+            <div className="flex shrink-0 items-center justify-center">
+              <Tabs
+                tabs={EXPOSURE_TABS}
+                active={manual ? "manual" : "auto"}
+                onChange={(id) => apply({ auto_exposure: id === "auto" })}
+              />
+            </div>
 
-        <SliderControl label="ISO" value={state.iso}>
-          <VerticalSlider
-            min={100}
-            max={1600}
-            step={100}
-            value={isoSliderValue}
-            disabled={!manual}
-            onChange={(e) => apply({ iso: Number(e.target.value) })}
-          />
-        </SliderControl>
+            <div className="flex justify-around h-full overflow-hidden gap-2">
+              <SliderControl label="Shutter" value={shutterLabel(state.shutter_us)}>
+                <VerticalSlider
+                  min={0}
+                  max={SHUTTER_STEPS.length - 1}
+                  step={1}
+                  value={shutterIdx}
+                  disabled={!manual}
+                  onChange={(e) =>
+                    apply({ shutter_us: SHUTTER_STEPS[Number(e.target.value)] })
+                  }
+                />
+              </SliderControl>
 
-        <SliderControl label="Aperture" value="Fixed">
-          <VerticalSlider disabled value={0} readOnly />
-        </SliderControl>
+              <SliderControl label="ISO" value={state.iso}>
+                <VerticalSlider
+                  min={100}
+                  max={1600}
+                  step={100}
+                  value={isoSliderValue}
+                  disabled={!manual}
+                  onChange={(e) => apply({ iso: Number(e.target.value) })}
+                />
+              </SliderControl>
+
+              <SliderControl label="Aperture" value="Fixed">
+                <VerticalSlider disabled value={0} readOnly />
+              </SliderControl>
+            </div>
+          </div>
+        ) : panel === "focus" ? (
+          !focus ? (
+            <p className="text-sm text-zinc-500">loading…</p>
+          ) : !focus.available ? (
+            <p className="text-sm text-zinc-500">
+              This camera has no focus control.
+            </p>
+          ) : (
+            <div className="flex h-full flex-col gap-4">
+              <div className="flex shrink-0 items-center justify-center">
+                <Tabs
+                  tabs={FOCUS_TABS}
+                  active={focus.af_mode ?? "continuous"}
+                  onChange={(id) => applyFocus({ af_mode: id })}
+                />
+              </div>
+
+              <div className="flex justify-around h-full overflow-hidden gap-2">
+                <SliderControl
+                  label="Lens"
+                  value={(focus.lens_position ?? 0).toFixed(2)}
+                >
+                  <VerticalSlider
+                    min={focus.min ?? 0}
+                    max={focus.max ?? 10}
+                    step={0.05}
+                    value={focus.lens_position ?? 0}
+                    disabled={focus.af_mode !== "manual"}
+                    onChange={(e) =>
+                      applyFocus({ lens_position: Number(e.target.value) })
+                    }
+                  />
+                </SliderControl>
+              </div>
+
+              <p className="shrink-0 text-center text-xs text-zinc-500">
+                0 = infinity · higher = closer
+              </p>
+            </div>
+          )
+        ) : !wb ? (
+          <p className="text-sm text-zinc-500">loading…</p>
+        ) : (
+          <div className="flex h-full flex-col gap-3 overflow-y-auto">
+            <div className="grid shrink-0 grid-cols-2 gap-2">
+              {WB_PRESETS.map((preset) => {
+                const active = wb.mode === preset.value;
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => applyWb({ mode: preset.value })}
+                    className={`rounded-xl border p-2.5 text-xs font-bold transition ${
+                      active
+                        ? "border-blue-500 bg-blue-600 text-white"
+                        : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {wb.mode === "manual" ? (
+              <div className="flex flex-col gap-3">
+                {(["red_gain", "blue_gain"] as const).map((key) => (
+                  <label key={key} className="flex items-center gap-3">
+                    <span className="w-8 text-xs font-bold text-zinc-500">
+                      {key === "red_gain" ? "Red" : "Blue"}
+                    </span>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={8}
+                      step={0.05}
+                      value={wb[key]}
+                      onChange={(e) => applyWb({ [key]: Number(e.target.value) })}
+                      className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-zinc-700 accent-blue-600"
+                    />
+                    <span className="w-10 text-right font-mono text-xs text-zinc-100">
+                      {wb[key].toFixed(2)}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center font-mono text-xs text-zinc-500">
+                live gains · R {wb.red_gain.toFixed(2)} · B{" "}
+                {wb.blue_gain.toFixed(2)}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {showCaptureButton && (

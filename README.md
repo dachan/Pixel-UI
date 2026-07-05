@@ -20,12 +20,18 @@ Code only ever flows **Mac → Pi**. The Pi is a runtime, not a dev box.
 ```
 pi-xel/
 ├── backend/
-│   ├── camera.py   # BaseCamera + MockCamera / RealCamera, get_camera() factory
-│   ├── app.py      # Flask: /api/* + static Next export catch-all
-│   └── .venv/      # local dev venv (gitignored)
+│   ├── app.py               # assembly: blueprint + CORS + static catch-all
+│   ├── api.py               # /api routes (JSON + MJPEG preview + SSE events)
+│   ├── camera_service.py    # camera singleton, capture orchestration, GPIO button
+│   ├── camera.py            # BaseCamera + MockCamera / RealCamera, get_camera()
+│   ├── shutter_button.py    # physical shutter button (lgpio)
+│   ├── events.py            # SSE fan-out (capture start/done -> shutter flash)
+│   ├── settings_store.py    # settings.json persistence
+│   └── .venv/               # local dev venv (gitignored)
 ├── frontend/       # Next.js static export (TS, Tailwind, app router, src dir)
 │   └── src/
 │       ├── lib/camera-api.ts        # all API calls go through here
+│       ├── lib/use-*.ts             # shared hooks (drag scroll, polling, prefs)
 │       ├── components/CaptureView.tsx
 │       └── app/page.tsx
 ├── scripts/deploy.sh        # Mac → Pi deploy
@@ -41,8 +47,8 @@ pi-xel/
 - `picamera2` is imported lazily inside `RealCamera.__init__` and is **not** in
   `requirements.txt`; on the Pi it comes from apt via a `--system-site-packages`
   venv. This is what lets the backend import cleanly on the Mac.
-- A physical shutter button is optional: when `CAMERA=real`, `app.py` starts an
-  `lgpio`-based listener (`backend/shutter_button.py`) on GPIO17 (BCM, override
+- A physical shutter button is optional: when `CAMERA=real`, `camera_service.py`
+  starts an `lgpio`-based listener (`backend/shutter_button.py`) on GPIO17 (BCM, override
   with `SHUTTER_GPIO_PIN`) that triggers the same capture path as the UI. Wire
   a momentary push button between that pin and GND — no resistor needed, it
   uses the Pi's internal pull-up. Talks to `lgpio` directly rather than via

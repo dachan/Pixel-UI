@@ -99,6 +99,15 @@ export async function systemTemperature(): Promise<SystemTemperatures> {
   return data.temperatures;
 }
 
+// Close the kiosk browser and drop to the Pi desktop. The request often won't
+// return — the page is being torn down as Chromium closes — so callers should
+// not await a response.
+export async function exitKiosk(): Promise<void> {
+  await fetch(`${BASE}/api/system/exit-kiosk`, { method: "POST" }).catch(() => {
+    // Expected: the browser may be killed before the response arrives.
+  });
+}
+
 // --- Orientation (rotation applied to captured images) ----------------------
 
 export type CameraOrientation = {

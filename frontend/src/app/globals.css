@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Touch kiosk: hide native scrollbars everywhere. Scrolling is drag-based
+   (see use-drag-scroll), so no scrollbar should ever be visible in any tab. */
+* {
+  scrollbar-width: none; /* Firefox */
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chromium / WebKit */
+}
+
+/* Don't let images start a native drag-and-drop — it hijacks the pointer
+   events the drag-to-scroll relies on (most visible in the Gallery, which is
+   full of image thumbnails). */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 /* Camera-shutter flash: a quick white pop that fades out. */
 @keyframes camera-flash {
   0% {

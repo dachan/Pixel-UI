@@ -7,6 +7,7 @@ import {
   type CameraInfo,
   type CameraMetadata,
 } from "@/lib/camera-api";
+import { useDragScroll } from "@/lib/use-drag-scroll";
 
 // Format any camera value (numbers, booleans, arrays, nested) for display.
 function fmt(value: unknown): string {
@@ -27,6 +28,7 @@ const HEADING_CLASS =
   "top-0 z-10 bg-zinc-900/95 px-4 pt-4 pb-2 font-semibold text-zinc-100 backdrop-blur-sm";
 
 export default function CameraMeta() {
+  const scrollRef = useDragScroll<HTMLDivElement>();
   const [info, setInfo] = useState<CameraInfo | null>(null);
   const [meta, setMeta] = useState<CameraMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,10 @@ export default function CameraMeta() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col gap-4 overflow-y-auto touch-pan-y overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden">
+    <div
+      ref={scrollRef}
+      className="flex h-full min-h-0 w-full flex-col gap-4 overflow-y-auto touch-pan-y overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
+    >
       <section className={PANEL_CLASS}>
         <h2 className={`${HEADING_CLASS} flex items-center gap-2`}>
           <span className="h-2 w-2 animate-pulse rounded-full bg-green-500" />

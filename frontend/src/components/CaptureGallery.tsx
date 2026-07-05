@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { captureUrl, listCaptures } from "@/lib/camera-api";
+import { useDragScroll } from "@/lib/use-drag-scroll";
 
 export default function CaptureGallery() {
+  const scrollRef = useDragScroll<HTMLDivElement>();
   const [captures, setCaptures] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Filename of the capture opened full-screen (null = grid view).
+  const [selected, setSelected] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     listCaptures()
@@ -46,12 +50,16 @@ export default function CaptureGallery() {
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto touch-pan-y overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden">
+    <div
+      ref={scrollRef}
+      className="h-full min-h-0 overflow-y-auto touch-pan-y overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
+    >
       <div className="grid w-full grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {captures.map((filename) => (
           <figure
             key={filename}
-            className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50"
+            onClick={() => setSelected(filename)}
+            className="cursor-pointer overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 transition hover:border-zinc-600"
           >
             <img
               src={captureUrl(filename)}
@@ -64,6 +72,24 @@ export default function CaptureGallery() {
           </figure>
         ))}
       </div>
+
+      {selected && (
+        <div
+          role="dialog"
+          aria-label={selected}
+          onClick={() => setSelected(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
+        >
+          <img
+            src={captureUrl(selected)}
+            alt={selected}
+            className="max-h-full max-w-full object-contain"
+          />
+          <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300">
+            {selected} · tap to close
+          </span>
+        </div>
+      )}
     </div>
   );
 }

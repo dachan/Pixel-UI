@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { previewUrl } from "@/lib/camera-api";
+import { previewUrl, getOrientation } from "@/lib/camera-api";
 
 const FLASH_MS = 600;
 
@@ -10,12 +10,21 @@ type CaptureSession = {
   captureDone: boolean;
 };
 
-export function CameraPreview() {
+export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
   const [frozen, setFrozen] = useState<string | null>(null);
   const [flashing, setFlashing] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
+  // Sensor rotation drives the preview box aspect: landscape at 0/180,
+  // portrait at 90/270 (the streamed frame is rotated server-side to match).
+  const [rotation, setRotation] = useState(0);
+
+  useEffect(() => {
+    getOrientation()
+      .then((o) => setRotation(o.rotation))
+      .catch(() => {});
+  }, []);
 
   const resumeLivePreview = useCallback(() => {
     sessionRef.current = null;
@@ -77,13 +86,22 @@ export function CameraPreview() {
   const streamSrc =
     previewKey > 0 ? `${previewUrl()}?v=${previewKey}` : previewUrl();
 
+  // At 90/270 the frame is portrait: switch the box to 9:16 and size by height
+  // so it uses as much vertical space as possible; otherwise fill width at 16:9.
+  const portrait = rotation === 90 || rotation === 270;
+  const boxClass = portrait
+    ? "aspect-[9/16] h-full max-w-full"
+    : "aspect-video w-full max-h-full";
+
   return (
-    <div className="relative flex overflow-hidden border border-zinc-800 h-full">
+    <div
+      className={`relative overflow-hidden border border-zinc-800 bg-black ${boxClass}`}
+    >
       <img
         ref={imgRef}
         src={streamSrc}
         alt="Live camera preview"
-        className="h-full w-full object-cover"
+        className="h-full w-full object-contain"
         width={100}
         height={100}
       />
@@ -92,8 +110,16 @@ export function CameraPreview() {
           src={frozen}
           alt=""
           aria-hidden
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
         />
+      )}
+      {showGrid && (
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute inset-y-0 left-1/3 w-px bg-white/40" />
+          <div className="absolute inset-y-0 left-2/3 w-px bg-white/40" />
+          <div className="absolute inset-x-0 top-1/3 h-px bg-white/40" />
+          <div className="absolute inset-x-0 top-2/3 h-px bg-white/40" />
+        </div>
       )}
       {flashing && (
         <div

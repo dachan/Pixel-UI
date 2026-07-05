@@ -9,17 +9,19 @@ import {
   getFormat,
   setFormat as saveFormat,
   systemTemperature,
+  exitKiosk,
   type CaptureFormatValue,
   type SystemTemperatures,
 } from "@/lib/camera-api";
+import { useDragScroll } from "@/lib/use-drag-scroll";
 
 // Capture rotations offered in the UI (degrees clockwise).
 const ROTATIONS = [0, 90, 180, 270] as const;
 
 // Capture formats offered in the UI, with friendly labels + descriptions.
 const FORMATS: { value: CaptureFormatValue; label: string; hint: string }[] = [
-  { value: "jpeg", label: "JPEG", hint: "Compressed photo only." },
   { value: "raw+jpeg", label: "RAW + JPEG", hint: "DNG raw plus a JPEG preview." },
+  { value: "jpeg", label: "JPEG", hint: "Compressed photo only." },
   { value: "raw", label: "RAW", hint: "DNG raw only — not shown in Gallery." },
 ];
 
@@ -29,7 +31,14 @@ function tempLabel(raw: string): string {
   return raw;
 }
 
-export default function CameraSettings() {
+export default function CameraSettings({
+  showGrid,
+  onGridChange,
+}: {
+  showGrid: boolean;
+  onGridChange: (next: boolean) => void;
+}) {
+  const scrollRef = useDragScroll<HTMLDivElement>();
   const [rotation, setRotation] = useState<number | null>(null);
   const [quality, setQuality] = useState<number | null>(null);
   const [format, setFormat] = useState<CaptureFormatValue | null>(null);
@@ -92,9 +101,51 @@ export default function CameraSettings() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }
 
+  // Two-tap confirm so a stray touch doesn't drop out of the kiosk.
+  const [confirmingExit, setConfirmingExit] = useState(false);
+  function onExitClick() {
+    if (!confirmingExit) {
+      setConfirmingExit(true);
+      window.setTimeout(() => setConfirmingExit(false), 4000);
+      return;
+    }
+    exitKiosk(); // closes the browser; this page goes away
+  }
+
   return (
-    <div className="h-full min-h-0 overflow-y-auto touch-pan-y">
+    <div
+      ref={scrollRef}
+      className="h-full min-h-0 overflow-y-auto touch-pan-y overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden"
+    >
       <div className="flex flex-col gap-6">
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-bold text-zinc-300">
+                Rule-of-thirds grid
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Composition grid overlaid on the live preview.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showGrid}
+              onClick={() => onGridChange(!showGrid)}
+              className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                showGrid ? "bg-blue-600" : "bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${
+                  showGrid ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
+        </section>
+
         <section className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-bold text-zinc-300">Sensor rotation</h2>
@@ -219,6 +270,26 @@ export default function CameraSettings() {
               ))}
             </dl>
           )}
+        </section>
+
+        <section className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-bold text-zinc-300">Exit kiosk</h2>
+            <p className="text-sm text-zinc-500">
+              Close the app and return to the Pi desktop.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onExitClick}
+            className={`rounded-xl border p-4 text-sm font-bold transition ${
+              confirmingExit
+                ? "border-red-500 bg-red-600 text-white"
+                : "border-zinc-700 text-zinc-300 hover:border-red-500 hover:text-white"
+            }`}
+          >
+            {confirmingExit ? "Tap again to exit to desktop" : "Exit to desktop"}
+          </button>
         </section>
       </div>
     </div>

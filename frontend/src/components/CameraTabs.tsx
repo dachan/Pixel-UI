@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CameraPreview } from "@/components/CaptureView";
 import CameraControls from "@/components/CameraControls";
 import CameraMeta from "@/components/CameraMeta";
@@ -19,6 +19,18 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function CameraTabs() {
   const [active, setActive] = useState<TabId>("camera");
+  // Rule-of-thirds overlay on the live preview; defaults on, persisted locally.
+  const [showGrid, setShowGrid] = useState(true);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("showGrid");
+    if (stored !== null) setShowGrid(stored === "true");
+  }, []);
+
+  function toggleGrid(next: boolean) {
+    setShowGrid(next);
+    localStorage.setItem("showGrid", String(next));
+  }
 
   return (
     <div className="flex w-full flex-1 flex-col gap-3 overflow-hidden">
@@ -28,7 +40,7 @@ export default function CameraTabs() {
         {active === "camera" ? (
           <div className="flex gap-4 w-full h-full">
             <div className="w-2/3 flex items-center justify-center overflow-hidden h-full">
-              <CameraPreview />
+              <CameraPreview showGrid={showGrid} />
             </div>
             <div className="w-1/3">
               <CameraControls />
@@ -39,7 +51,7 @@ export default function CameraTabs() {
         ) : active === "gallery" ? (
           <CaptureGallery />
         ) : (
-          <CameraSettings />
+          <CameraSettings showGrid={showGrid} onGridChange={toggleGrid} />
         )}
       </div>
     </div>

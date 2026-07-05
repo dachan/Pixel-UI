@@ -8,19 +8,22 @@
   Why no deviceName: a DSI touch panel often enumerates with a name like
   "11-0038 generic ft5x06 (NN)" whose "(NN)" suffix is assigned by libinput and
   CHANGES across reboots/re-enumeration. Pinning an exact name means the rule
-  silently stops matching after a reboot, labwc falls back to its default
-  (mouseEmulation ON), touch swipes become mouse click-drags, and Chromium —
-  which only scrolls on real touch — stops scrolling. Matching all touch devices
-  avoids that entirely.
+  silently stops matching after a reboot. Matching all touch devices avoids that.
 
-  mouseEmulation="no" -> deliver native wl_touch events to Chromium (so swipe
-  scrolls). mapToOutput="DSI-2" -> map touch coordinates to the panel; change
-  this to your output name (see `wlr-randr`) if your display isn't "DSI-2".
+  mouseEmulation="yes": touch acts as a mouse, so there's a visible cursor and
+  taps register as clicks. (mouseEmulation="no" delivers native wl_touch but
+  removes the cursor entirely, and Chromium's wl_touch scrolling proved
+  unreliable on this labwc build.) Swipe-to-scroll is therefore handled in the
+  web app itself (a press-and-drag scroll handler that works with the emulated
+  mouse), not by the compositor.
+
+  mapToOutput="DSI-2" -> map touch coordinates to the panel; change this to your
+  output name (see `wlr-randr`) if your display isn't "DSI-2".
 
   Install to ~/.config/labwc/rc.xml on the Pi; a reboot (or full labwc restart)
   is required for touch-input config to take effect — a live SIGHUP reconfigure
   does NOT re-apply it.
 -->
 <openbox_config xmlns="http://openbox.org/3.4/rc">
-  <touch mapToOutput="DSI-2" mouseEmulation="no"/>
+  <touch mapToOutput="DSI-2" mouseEmulation="yes"/>
 </openbox_config>

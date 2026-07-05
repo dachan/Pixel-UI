@@ -21,15 +21,25 @@ export default function CameraTabs() {
   const [active, setActive] = useState<TabId>("camera");
   // Rule-of-thirds overlay on the live preview; defaults on, persisted locally.
   const [showGrid, setShowGrid] = useState(true);
+  // On-screen Capture button; defaults on. Off is for setups relying solely
+  // on the physical GPIO shutter button, to keep the kiosk UI uncluttered.
+  const [showCaptureButton, setShowCaptureButton] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem("showGrid");
     if (stored !== null) setShowGrid(stored === "true");
+    const storedCapture = localStorage.getItem("showCaptureButton");
+    if (storedCapture !== null) setShowCaptureButton(storedCapture === "true");
   }, []);
 
   function toggleGrid(next: boolean) {
     setShowGrid(next);
     localStorage.setItem("showGrid", String(next));
+  }
+
+  function toggleCaptureButton(next: boolean) {
+    setShowCaptureButton(next);
+    localStorage.setItem("showCaptureButton", String(next));
   }
 
   return (
@@ -43,7 +53,7 @@ export default function CameraTabs() {
               <CameraPreview showGrid={showGrid} />
             </div>
             <div className="w-1/3">
-              <CameraControls />
+              <CameraControls showCaptureButton={showCaptureButton} />
             </div>
           </div>
         ) : active === "meta" ? (
@@ -51,7 +61,12 @@ export default function CameraTabs() {
         ) : active === "gallery" ? (
           <CaptureGallery />
         ) : (
-          <CameraSettings showGrid={showGrid} onGridChange={toggleGrid} />
+          <CameraSettings
+            showGrid={showGrid}
+            onGridChange={toggleGrid}
+            showCaptureButton={showCaptureButton}
+            onCaptureButtonChange={toggleCaptureButton}
+          />
         )}
       </div>
     </div>

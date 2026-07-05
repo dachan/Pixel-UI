@@ -34,9 +34,13 @@ function tempLabel(raw: string): string {
 export default function CameraSettings({
   showGrid,
   onGridChange,
+  showCaptureButton,
+  onCaptureButtonChange,
 }: {
   showGrid: boolean;
   onGridChange: (next: boolean) => void;
+  showCaptureButton: boolean;
+  onCaptureButtonChange: (next: boolean) => void;
 }) {
   const scrollRef = useDragScroll<HTMLDivElement>();
   const [rotation, setRotation] = useState<number | null>(null);
@@ -140,6 +144,35 @@ export default function CameraSettings({
               <span
                 className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${
                   showGrid ? "left-6" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-bold text-zinc-300">
+                On-screen capture button
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Shutter button on the Camera tab. Turn off if you're only
+                using the physical shutter button.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showCaptureButton}
+              onClick={() => onCaptureButtonChange(!showCaptureButton)}
+              className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                showCaptureButton ? "bg-blue-600" : "bg-zinc-700"
+              }`}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${
+                  showCaptureButton ? "left-6" : "left-1"
                 }`}
               />
             </button>

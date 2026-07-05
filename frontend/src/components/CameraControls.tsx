@@ -91,7 +91,11 @@ function SliderControl({ label, value, children }: SliderControlProps) {
   );
 }
 
-export default function CameraControls() {
+export default function CameraControls({
+  showCaptureButton = true,
+}: {
+  showCaptureButton?: boolean;
+}) {
   const [state, setState] = useState<CameraControlsState>({
     auto_exposure: true,
     iso: 100,
@@ -188,13 +192,15 @@ export default function CameraControls() {
         </SliderControl>
       </div>
 
-      <button
-        onClick={onCapture}
-        disabled={captureBusy}
-        className="w-full rounded-full bg-blue-600 p-4 font-bold transition hover:bg-blue-500 disabled:opacity-50"
-      >
-        {captureBusy ? "Capturing…" : "Capture"}
-      </button>
+      {showCaptureButton && (
+        <button
+          onClick={onCapture}
+          disabled={captureBusy}
+          className="w-full rounded-full bg-blue-600 p-4 font-bold transition hover:bg-blue-500 disabled:opacity-50"
+        >
+          {captureBusy ? "Capturing…" : "Capture"}
+        </button>
+      )}
     </section>
   );
 }

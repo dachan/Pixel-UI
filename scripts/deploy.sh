@@ -37,6 +37,7 @@ ssh "${PI_TARGET}" "mkdir -p ${PI_DIR}/frontend/out"
 rsync -az --delete \
   --exclude '.venv' \
   --exclude 'captures' \
+  --exclude 'settings.json' \
   --exclude '__pycache__' \
   --exclude 'frontend' \
   backend/ "${PI_TARGET}:${PI_DIR}/"

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import abc
 import io
+import json
 import math
 import os
 import threading
@@ -132,7 +133,14 @@ class BaseCamera(abc.ABC):
         # JPEG quality (1..100) for saved captures.
         self._quality = 100
         # Capture format (one of FORMATS).
-        self._format = "jpeg"
+        self._format = "raw+jpeg"
+        # Where persisted settings live (override with SETTINGS_PATH). Kept next
+        # to the backend code (i.e. ~/ir-cam/settings.json on the Pi).
+        self._settings_path = os.environ.get("SETTINGS_PATH") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "settings.json"
+        )
+        # Suppress saving while restoring (applying loaded values back).
+        self._restoring = False
 
     def get_orientation(self) -> dict:
         """Return the current capture orientation: ``{"rotation": int}``."""
@@ -148,6 +156,7 @@ class BaseCamera(abc.ABC):
                     f"rotation must be one of {self.ROTATIONS}, got {rotation}"
                 )
             self._rotation = rotation
+        self._save_settings()
         return self.get_orientation()
 
     def get_quality(self) -> dict:
@@ -165,6 +174,7 @@ class BaseCamera(abc.ABC):
                     f"got {quality}"
                 )
             self._quality = quality
+        self._save_settings()
         return self.get_quality()
 
     def get_format(self) -> dict:
@@ -180,7 +190,67 @@ class BaseCamera(abc.ABC):
                     f"format must be one of {self.FORMATS}, got {fmt!r}"
                 )
             self._format = fmt
+        self._save_settings()
         return self.get_format()
+
+    # --- Persistence -------------------------------------------------------- #
+
+    def _settings_snapshot(self) -> dict:
+        """Current persistable settings."""
+        snap = {
+            "rotation": getattr(self, "_rotation", 0),
+            "quality": getattr(self, "_quality", 100),
+            "format": getattr(self, "_format", "jpeg"),
+        }
+        try:
+            snap["controls"] = self.controls_state()
+        except Exception:
+            pass
+        return snap
+
+    def _save_settings(self) -> None:
+        """Persist settings to disk (best-effort; skipped while restoring)."""
+        if getattr(self, "_restoring", False):
+            return
+        try:
+            with open(self._settings_path, "w") as f:
+                json.dump(self._settings_snapshot(), f, indent=2)
+        except OSError:
+            pass
+
+    def restore_settings(self) -> None:
+        """Load persisted settings and apply them. Call once the camera is ready."""
+        try:
+            with open(self._settings_path) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict):
+            return
+        self._restoring = True
+        try:
+            if "rotation" in data:
+                try:
+                    self.set_orientation({"rotation": data["rotation"]})
+                except Exception:
+                    pass
+            if "quality" in data:
+                try:
+                    self.set_quality({"quality": data["quality"]})
+                except Exception:
+                    pass
+            if "format" in data:
+                try:
+                    self.set_format({"format": data["format"]})
+                except Exception:
+                    pass
+            if isinstance(data.get("controls"), dict):
+                try:
+                    self.set_controls(data["controls"])
+                except Exception:
+                    pass
+        finally:
+            self._restoring = False
 
     def _capture_targets(self, path: str):
         """Resolve which files a capture should write for the current format.
@@ -314,6 +384,7 @@ class MockCamera(BaseCamera):
             self._exposure_us = max(1, int(settings["shutter_us"]))
         if settings.get("iso") is not None:
             self._gain = max(1.0, float(settings["iso"]) / 100.0)
+        self._save_settings()
         return self.controls_state()
 
     def controls_state(self) -> dict:
@@ -472,9 +543,15 @@ class RealCamera(BaseCamera):
         self._file_output = FileOutput(self._output)
         self._picam2.start_recording(self._encoder, self._file_output)
 
-        # Exposure state echoed back to clients (defaults: auto).
+        # Exposure state echoed back to clients (defaults: auto). Apply without
+        # persisting — restore_settings() (called after construction) loads any
+        # saved values and would otherwise be clobbered by these defaults.
         self._state = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
-        self.set_controls(self._state)
+        self._restoring = True
+        try:
+            self.set_controls(self._state)
+        finally:
+            self._restoring = False
 
     def stream(self):
         while True:
@@ -569,6 +646,7 @@ class RealCamera(BaseCamera):
                         "ExposureTime": self._state["shutter_us"],
                     }
                 )
+        self._save_settings()
         return self.controls_state()
 
     def controls_state(self) -> dict:
@@ -583,7 +661,11 @@ class RealCamera(BaseCamera):
 
 
 def get_camera() -> BaseCamera:
-    """Factory: ``CAMERA=real`` -> RealCamera, anything else -> MockCamera."""
-    if os.environ.get("CAMERA") == "real":
-        return RealCamera()
-    return MockCamera()
+    """Factory: ``CAMERA=real`` -> RealCamera, anything else -> MockCamera.
+
+    Restores persisted settings so the camera comes up with the last-used
+    rotation/quality/format/exposure after a restart or reboot.
+    """
+    camera = RealCamera() if os.environ.get("CAMERA") == "real" else MockCamera()
+    camera.restore_settings()
+    return camera

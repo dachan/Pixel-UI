@@ -18,3 +18,4 @@ deploy.env
 # Agent tooling (kept locally, not committed)
 frontend/AGENTS.md
 frontend/CLAUDE.md
+backend/settings.json

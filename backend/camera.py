@@ -724,7 +724,8 @@ class RealCamera(BaseCamera):
         self._camera_lock = threading.RLock()
 
         video_config = self._picam2.create_video_configuration(
-            main={"size": (self.WIDTH, self.HEIGHT)}
+            main={"size": (self.WIDTH, self.HEIGHT)},
+            raw=self._full_fov_raw_stream(),
         )
         self._picam2.configure(video_config)
 
@@ -751,6 +752,35 @@ class RealCamera(BaseCamera):
                 self._apply_focus()
         finally:
             self._restoring = False
+
+    def _full_fov_raw_stream(self):
+        """Raw-stream spec that keeps the preview at the sensor's full FoV.
+
+        Left to itself, libcamera picks the smallest sensor mode that fits the
+        main stream — on the imx708 that's a *cropped* mode (1536x864 reads a
+        3072x1728 centre crop), so the live preview showed a narrower field of
+        view than captures. Instead, pick the lowest-resolution sensor mode
+        among those with the widest crop (i.e. the binned full-FoV mode), so
+        preview and stills frame identically. Returns None (previous behavior)
+        if modes can't be inspected.
+        """
+        try:
+            modes = [
+                m for m in self._picam2.sensor_modes if m.get("crop_limits")
+            ]
+            if not modes:
+                return None
+
+            def crop_area(mode):
+                _x, _y, w, h = mode["crop_limits"]
+                return w * h
+
+            widest = max(crop_area(m) for m in modes)
+            full_fov = [m for m in modes if crop_area(m) == widest]
+            smallest = min(full_fov, key=lambda m: m["size"][0] * m["size"][1])
+            return {"size": smallest["size"]}
+        except Exception:
+            return None
 
     def stream(self):
         while True:

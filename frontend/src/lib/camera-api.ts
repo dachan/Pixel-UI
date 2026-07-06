@@ -130,6 +130,12 @@ export function setFocus(settings: {
   return postJson("/camera/focus", "set focus", settings);
 }
 
+// Tap-to-focus: x/y are normalized 0..1 within the displayed preview frame.
+// Steers continuous AF to that spot (switching from manual if needed).
+export function focusAtPoint(x: number, y: number): Promise<FocusState> {
+  return postJson("/camera/focus/point", "focus at point", { x, y });
+}
+
 // --- White balance -----------------------------------------------------------
 
 export type WhiteBalanceMode =

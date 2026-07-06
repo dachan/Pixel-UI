@@ -176,6 +176,16 @@ def camera_focus():
     return jsonify(camera.get_focus())
 
 
+@api.route("/camera/focus/point", methods=["POST"])
+def camera_focus_point():
+    """POST {x, y} — tap-to-focus on a normalized point of the displayed frame.
+
+    Steers continuous AF to a window around the point (switching to
+    continuous if the camera was in manual focus).
+    """
+    return jsonify(camera.set_focus_point(request.get_json(silent=True) or {}))
+
+
 @api.route("/camera/wb", methods=["GET", "POST"])
 def camera_white_balance():
     """GET white-balance state; POST {mode, red_gain, blue_gain} to set.

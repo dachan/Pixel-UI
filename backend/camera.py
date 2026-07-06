@@ -75,6 +75,24 @@ _AWB_MODE_IDS = {
 _AF_MANUAL = 0
 _AF_CONTINUOUS = 2
 
+# libcamera AfMeteringEnum values.
+_AF_METERING_AUTO = 0
+_AF_METERING_WINDOWS = 1
+
+
+def _unrotate_point(x: float, y: float, rotation: int) -> tuple[float, float]:
+    """Map a normalized point in the rotated (displayed) frame back to native
+    sensor orientation — the inverse of the clockwise rotation baked into
+    preview frames, since AF windows are expressed in sensor coordinates.
+    """
+    if rotation == 90:
+        return (y, 1.0 - x)
+    if rotation == 180:
+        return (1.0 - x, 1.0 - y)
+    if rotation == 270:
+        return (1.0 - y, x)
+    return (x, y)
+
 # Rotation (degrees clockwise) -> EXIF/TIFF Orientation tag value. Raw DNG data
 # is stored in native sensor orientation (rotating the Bayer grid would corrupt
 # the colour mosaic); instead the Orientation tag tells raw editors how to show
@@ -163,6 +181,8 @@ class BaseCamera(abc.ABC):
         self._format = "raw+jpeg"
         # Focus intent (only meaningful when focus_available()).
         self._focus = {"af_mode": "continuous", "lens_position": 1.0}
+        # Tap-to-focus point in native sensor coords (None = whole scene).
+        self._af_point: tuple[float, float] | None = None
         # White-balance intent; gains only drive the sensor in "manual".
         self._wb = {"mode": "auto", "red_gain": 2.0, "blue_gain": 2.0}
         # Settings persistence (see settings_store.py).
@@ -268,8 +288,36 @@ class BaseCamera(abc.ABC):
         if position is not None:
             lo, hi = self._lens_range()
             self._focus["lens_position"] = min(hi, max(lo, float(position)))
+        # Any explicit mode/position change drops a previous tap-to-focus
+        # window: continuous goes back to whole-scene metering.
+        self._af_point = None
         self._apply_focus()
         self._save_settings()
+        return self.get_focus()
+
+    def _apply_focus_point(self, x: float, y: float) -> None:
+        """Push a tap-to-focus window into the sensor. No-op for the mock."""
+
+    def set_focus_point(self, point: dict) -> dict:
+        """Focus on a spot: ``{x, y}`` normalized 0..1 in the displayed frame.
+
+        Steers continuous AF to a window around the tap (switching to
+        continuous if the camera was in manual, like phone camera apps).
+        The preview is rotated server-side, so the tap is mapped back to
+        native sensor orientation first.
+        """
+        if not self.focus_available():
+            raise ValueError("this camera has no focus control")
+        try:
+            x, y = float(point["x"]), float(point["y"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("x and y (normalized 0..1) are required")
+        if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
+            raise ValueError(f"x and y must be within 0..1, got ({x}, {y})")
+        x, y = _unrotate_point(x, y, self._rotation)
+        self._focus["af_mode"] = "continuous"
+        self._af_point = (x, y)
+        self._apply_focus_point(x, y)
         return self.get_focus()
 
     # --- White balance ---------------------------------------------------------- #
@@ -493,6 +541,15 @@ class MockCamera(BaseCamera):
             f"  WB {self._wb['mode'].upper()}",
             fill=(120, 230, 160),
         )
+
+        # Tap-to-focus marker: drawn in native coords pre-rotation, so after
+        # the stream is rotated it lands exactly where the user tapped.
+        if self._af_point:
+            px = int(self._af_point[0] * self.WIDTH)
+            py = int(self._af_point[1] * self.HEIGHT)
+            r = 40
+            draw.rectangle((px - r, py - r, px + r, py + r),
+                           outline=(255, 210, 80), width=3)
 
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=80)
@@ -795,12 +852,35 @@ class RealCamera(BaseCamera):
     def _apply_focus(self) -> None:
         with self._camera_lock:
             if self._focus["af_mode"] == "continuous":
-                self._picam2.set_controls({"AfMode": _AF_CONTINUOUS})
+                # Whole-scene metering: also clears any tap-to-focus window.
+                self._picam2.set_controls({
+                    "AfMode": _AF_CONTINUOUS,
+                    "AfMetering": _AF_METERING_AUTO,
+                })
             else:
                 self._picam2.set_controls({
                     "AfMode": _AF_MANUAL,
                     "LensPosition": float(self._focus["lens_position"]),
                 })
+
+    def _apply_focus_point(self, x: float, y: float) -> None:
+        if "AfWindows" not in self._picam2.camera_controls:
+            raise ValueError("this camera does not support focus windows")
+        with self._camera_lock:
+            crop = self._picam2.camera_properties["ScalerCropMaximum"]
+            try:
+                cx, cy, cw, ch = crop
+            except TypeError:  # older picamera2 hands back a libcamera Rectangle
+                cx, cy, cw, ch = crop.x, crop.y, crop.width, crop.height
+            # ~15% window centred on the tap, clamped inside the sensor crop.
+            ww, wh = int(cw * 0.15), int(ch * 0.15)
+            wx = cx + min(max(int(x * cw) - ww // 2, 0), cw - ww)
+            wy = cy + min(max(int(y * ch) - wh // 2, 0), ch - wh)
+            self._picam2.set_controls({
+                "AfMode": _AF_CONTINUOUS,
+                "AfMetering": _AF_METERING_WINDOWS,
+                "AfWindows": [(wx, wy, ww, wh)],
+            })
 
     def _apply_white_balance(self) -> None:
         with self._camera_lock:

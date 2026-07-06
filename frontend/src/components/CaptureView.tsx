@@ -1,9 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { previewUrl, getOrientation, captureEventsUrl } from "@/lib/camera-api";
+import {
+  previewUrl,
+  getOrientation,
+  captureEventsUrl,
+  getFocus,
+  focusAtPoint,
+} from "@/lib/camera-api";
 
 const FLASH_MS = 600;
+const FOCUS_RING_MS = 900;
 
 type CaptureSession = {
   flashDone: boolean;
@@ -19,12 +26,36 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
   // Sensor rotation drives the preview box aspect: landscape at 0/180,
   // portrait at 90/270 (the streamed frame is rotated server-side to match).
   const [rotation, setRotation] = useState(0);
+  // Tap-to-focus: only offered when the camera has a focus motor.
+  const [focusAvailable, setFocusAvailable] = useState(false);
+  const [focusRing, setFocusRing] = useState<{
+    x: number;
+    y: number;
+    key: number;
+  } | null>(null);
 
   useEffect(() => {
     getOrientation()
       .then((o) => setRotation(o.rotation))
       .catch(() => {});
+    getFocus()
+      .then((f) => setFocusAvailable(f.available))
+      .catch(() => {});
   }, []);
+
+  function onTapToFocus(e: React.MouseEvent<HTMLDivElement>) {
+    if (!focusAvailable) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    const key = Date.now();
+    setFocusRing({ x, y, key });
+    window.setTimeout(
+      () => setFocusRing((ring) => (ring?.key === key ? null : ring)),
+      FOCUS_RING_MS,
+    );
+    focusAtPoint(x, y).catch(() => {});
+  }
 
   const resumeLivePreview = useCallback(() => {
     sessionRef.current = null;
@@ -98,7 +129,10 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
 
   return (
     <div
-      className={`relative overflow-hidden border border-zinc-800 bg-black ${boxClass}`}
+      onClick={onTapToFocus}
+      className={`relative overflow-hidden border border-zinc-800 bg-black ${boxClass} ${
+        focusAvailable ? "cursor-crosshair" : ""
+      }`}
     >
       <img
         ref={imgRef}
@@ -123,6 +157,18 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
           <div className="absolute inset-x-0 top-1/3 h-px bg-white/40" />
           <div className="absolute inset-x-0 top-2/3 h-px bg-white/40" />
         </div>
+      )}
+      {focusRing && (
+        <div
+          key={focusRing.key}
+          aria-hidden
+          className="pointer-events-none absolute h-16 w-16 rounded-lg border-2 border-yellow-400"
+          style={{
+            left: `${focusRing.x * 100}%`,
+            top: `${focusRing.y * 100}%`,
+            animation: `focus-ring ${FOCUS_RING_MS}ms ease-out forwards`,
+          }}
+        />
       )}
       {flashing && (
         <div

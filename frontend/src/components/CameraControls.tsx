@@ -136,10 +136,12 @@ export default function CameraControls({
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
+  // Refetch on every panel switch: tap-to-focus on the preview can flip the
+  // camera from manual to continuous behind this component's back.
   useEffect(() => {
     getFocus().then(setFocusState).catch(() => {});
     getWhiteBalance().then(setWb).catch(() => {});
-  }, []);
+  }, [panel]);
 
   // In auto mode, poll so sliders reflect live AE values. (State starts in
   // auto, so the first tick doubles as the initial fetch; if the backend is

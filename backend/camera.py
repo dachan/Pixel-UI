@@ -969,6 +969,10 @@ class RealCamera(BaseCamera):
                     request.release()
             finally:
                 self._picam2.start_recording(self._encoder, self._file_output)
+                if self._throttled:
+                    # Resuming recording re-applies the video config's frame
+                    # duration, silently undoing the thermal throttle.
+                    self._apply_throttle()
         return {"files": files, "preview": preview}
 
     def info(self) -> dict:

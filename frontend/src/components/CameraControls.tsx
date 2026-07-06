@@ -349,7 +349,14 @@ export default function CameraControls({
                     value={focus.lens_position ?? 0}
                     disabled={focus.af_mode !== "manual"}
                     onChange={(e) =>
-                      applyFocus({ lens_position: Number(e.target.value) })
+                      // Always reassert manual: a tap-to-focus on the preview
+                      // silently flips the camera to continuous, and a
+                      // lens-only update would be ignored there — the slider
+                      // would feel dead.
+                      applyFocus({
+                        af_mode: "manual",
+                        lens_position: Number(e.target.value),
+                      })
                     }
                   />
                 </SliderControl>

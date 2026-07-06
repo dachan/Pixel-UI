@@ -126,6 +126,24 @@ export default function CameraSettings({
   return (
     <DragScrollArea>
       <div className="flex flex-col gap-6">
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-bold text-zinc-300">Temperature</h2>
+          {temps === null ? (
+            <p className="text-sm text-zinc-500">loading…</p>
+          ) : Object.keys(temps).length === 0 ? (
+            <p className="text-sm text-zinc-500">unavailable on this host</p>
+          ) : (
+            <dl className="flex flex-col gap-1">
+              {Object.entries(temps).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3 text-sm">
+                  <dt className="text-zinc-400">{tempLabel(k)}</dt>
+                  <dd className="font-mono text-zinc-100">{v.toFixed(1)} °C</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </section>
+
         <SettingToggle
           title="Rule-of-thirds grid"
           description="Composition grid overlaid on the live preview."
@@ -302,24 +320,6 @@ export default function CameraSettings({
             )}
           </section>
         )}
-
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-bold text-zinc-300">Pi temperature</h2>
-          {temps === null ? (
-            <p className="text-sm text-zinc-500">loading…</p>
-          ) : Object.keys(temps).length === 0 ? (
-            <p className="text-sm text-zinc-500">unavailable on this host</p>
-          ) : (
-            <dl className="flex flex-col gap-1">
-              {Object.entries(temps).map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-3 text-sm">
-                  <dt className="text-zinc-400">{tempLabel(k)}</dt>
-                  <dd className="font-mono text-zinc-100">{v.toFixed(1)} °C</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </section>
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">

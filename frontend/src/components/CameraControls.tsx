@@ -133,14 +133,37 @@ export default function CameraControls({
   });
   const [focus, setFocusState] = useState<FocusState | null>(null);
   const [wb, setWb] = useState<WhiteBalanceState | null>(null);
+  // Manual-WB adjustment state: Temperature/Tint slider positions plus the
+  // anchor gains they adjust relative to (what AWB had chosen when manual
+  // mode was entered). Null outside manual mode.
+  const [wbAdjust, setWbAdjust] = useState<{
+    temp: number; // -1 (cool) .. +1 (warm)
+    tint: number; // -1 (green) .. +1 (magenta)
+    r0: number;
+    b0: number;
+  } | null>(null);
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+
+  // Adopt fetched WB state; if the camera is already in manual (page load,
+  // another client switched it), anchor the sliders at its current gains.
+  function adoptWb(next: WhiteBalanceState) {
+    setWb(next);
+    if (next.mode === "manual") {
+      setWbAdjust(
+        (prev) =>
+          prev ?? { temp: 0, tint: 0, r0: next.red_gain, b0: next.blue_gain },
+      );
+    } else {
+      setWbAdjust(null);
+    }
+  }
 
   // Refetch on every panel switch: tap-to-focus on the preview can flip the
   // camera from manual to continuous behind this component's back.
   useEffect(() => {
     getFocus().then(setFocusState).catch(() => {});
-    getWhiteBalance().then(setWb).catch(() => {});
+    getWhiteBalance().then(adoptWb).catch(() => {});
   }, [panel]);
 
   // In auto mode, poll so sliders reflect live AE values. (State starts in
@@ -167,7 +190,7 @@ export default function CameraControls({
   );
   usePolling(
     () => {
-      getWhiteBalance().then(setWb).catch(() => {});
+      getWhiteBalance().then(adoptWb).catch(() => {});
     },
     1000,
     panel === "wb" && wb !== null && wb.mode !== "manual",
@@ -193,6 +216,39 @@ export default function CameraControls({
     setWhiteBalance(patch)
       .then(setWb)
       .catch(() => {});
+  }
+
+  // Temperature/Tint are the perceptual axes of the same two degrees of
+  // freedom as the red/blue gains: temp trades red against blue (warm/cool),
+  // tint moves both against green (magenta/green). Full deflection doubles/
+  // halves the red:blue ratio (temp) or scales both by 1.5x (tint).
+  const TEMP_FACTOR = 2.0;
+  const TINT_FACTOR = 1.5;
+
+  function wbGainsFor(adjust: NonNullable<typeof wbAdjust>) {
+    const kTemp = Math.pow(TEMP_FACTOR, adjust.temp);
+    const kTint = Math.pow(TINT_FACTOR, adjust.tint);
+    const clamp = (v: number) => Math.min(8, Math.max(0.1, v));
+    return {
+      red_gain: clamp(adjust.r0 * kTemp * kTint),
+      blue_gain: clamp((adjust.b0 / kTemp) * kTint),
+    };
+  }
+
+  function enterManualWb() {
+    if (!wb) return;
+    // Anchor at the gains AWB is currently using, so manual starts from a
+    // sensible neutral and the sliders sit centred.
+    const anchor = { temp: 0, tint: 0, r0: wb.red_gain, b0: wb.blue_gain };
+    setWbAdjust(anchor);
+    applyWb({ mode: "manual", ...wbGainsFor(anchor) });
+  }
+
+  function adjustWb(patch: { temp?: number; tint?: number }) {
+    if (!wbAdjust) return;
+    const next = { ...wbAdjust, ...patch };
+    setWbAdjust(next);
+    applyWb(wbGainsFor(next));
   }
 
   async function onCapture() {
@@ -320,7 +376,11 @@ export default function CameraControls({
                   <button
                     key={preset.value}
                     type="button"
-                    onClick={() => applyWb({ mode: preset.value })}
+                    onClick={() =>
+                      preset.value === "manual"
+                        ? enterManualWb()
+                        : applyWb({ mode: preset.value })
+                    }
                     className={`rounded-xl border p-2.5 text-xs font-bold transition ${
                       active
                         ? "border-blue-500 bg-blue-600 text-white"
@@ -339,27 +399,50 @@ export default function CameraControls({
                 shift colour.
               </p>
             )}
-            {wb.mode === "manual" ? (
+            {wb.mode === "manual" && wbAdjust ? (
               <div className="flex flex-col gap-3">
-                {(["red_gain", "blue_gain"] as const).map((key) => (
+                {(
+                  [
+                    {
+                      key: "temp",
+                      label: "Temp",
+                      // Drag right = image warmer (amber), left = cooler.
+                      gradient:
+                        "linear-gradient(to right, #6ab0ff, #f4f4f5, #ffb057)",
+                    },
+                    {
+                      key: "tint",
+                      label: "Tint",
+                      // Drag right = magenta, left = green.
+                      gradient:
+                        "linear-gradient(to right, #7bd88f, #f4f4f5, #e08ae0)",
+                    },
+                  ] as const
+                ).map(({ key, label, gradient }) => (
                   <label key={key} className="flex items-center gap-3">
                     <span className="w-8 text-xs font-bold text-zinc-500">
-                      {key === "red_gain" ? "Red" : "Blue"}
+                      {label}
                     </span>
                     <input
                       type="range"
-                      min={0.1}
-                      max={8}
-                      step={0.05}
-                      value={wb[key]}
-                      onChange={(e) => applyWb({ [key]: Number(e.target.value) })}
-                      className="h-2 flex-1 cursor-pointer appearance-none rounded-full bg-zinc-700 accent-blue-600"
+                      min={-100}
+                      max={100}
+                      step={1}
+                      value={Math.round(wbAdjust[key] * 100)}
+                      onChange={(e) =>
+                        adjustWb({ [key]: Number(e.target.value) / 100 })
+                      }
+                      className="h-2 flex-1 cursor-pointer appearance-none rounded-full accent-blue-600"
+                      style={{ background: gradient }}
                     />
                     <span className="w-10 text-right font-mono text-xs text-zinc-100">
-                      {wb[key].toFixed(2)}
+                      {Math.round(wbAdjust[key] * 100)}
                     </span>
                   </label>
                 ))}
+                <p className="text-center font-mono text-xs text-zinc-500">
+                  R {wb.red_gain.toFixed(2)} · B {wb.blue_gain.toFixed(2)}
+                </p>
               </div>
             ) : (
               <p className="text-center font-mono text-xs text-zinc-500">

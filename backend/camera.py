@@ -171,6 +171,10 @@ class BaseCamera(abc.ABC):
     # just noise amplification, but the API accepts the full range).
     GAIN_MIN = 0.1
     GAIN_MAX = 32.0
+    # Colour tunings: "default" = the sensor's own tuning file; "standard" =
+    # the non-NoIR variant, whose colour-temperature AWB makes WB presets
+    # meaningful on a NoIR sensor (only offered there — see tuning_available).
+    TUNINGS = ("default", "standard")
 
     def __init__(self):
         # Rotation (degrees clockwise) applied to captured stills.
@@ -185,6 +189,8 @@ class BaseCamera(abc.ABC):
         self._af_point: tuple[float, float] | None = None
         # White-balance intent; gains only drive the sensor in "manual".
         self._wb = {"mode": "auto", "red_gain": 2.0, "blue_gain": 2.0}
+        # Colour tuning (one of TUNINGS); real cameras load it at open time.
+        self._tuning = "default"
         # Settings persistence (see settings_store.py).
         self._store = SettingsStore()
         # Suppress saving while restoring (applying loaded values back).
@@ -366,6 +372,42 @@ class BaseCamera(abc.ABC):
         self._save_settings()
         return self.get_white_balance()
 
+    # --- Colour tuning ---------------------------------------------------------- #
+
+    def tuning_available(self) -> bool:
+        """Whether a "standard" tuning alternative exists for this camera.
+
+        Only NoIR sensors have one (the filtered variant's tuning file);
+        a regular camera is already on it.
+        """
+        return False
+
+    def _apply_tuning(self) -> None:
+        """Make self._tuning take effect. Real cameras rebuild the pipeline."""
+
+    def get_tuning(self) -> dict:
+        return {"tuning": self._tuning, "available": self.tuning_available()}
+
+    def set_tuning(self, settings: dict) -> dict:
+        """Set the colour tuning (one of :attr:`TUNINGS`).
+
+        On a real camera this tears down and reopens the pipeline (a few
+        seconds); a no-op when the value is unchanged, so restoring persisted
+        settings at boot doesn't rebuild a camera that opened with them.
+        """
+        tuning = settings.get("tuning")
+        if tuning is not None and tuning != self._tuning:
+            if tuning not in self.TUNINGS:
+                raise ValueError(
+                    f"tuning must be one of {self.TUNINGS}, got {tuning!r}"
+                )
+            if not self.tuning_available():
+                raise ValueError("no alternative tuning for this camera")
+            self._tuning = tuning
+            self._apply_tuning()
+            self._save_settings()
+        return self.get_tuning()
+
     # --- Persistence -------------------------------------------------------- #
 
     def _settings_snapshot(self) -> dict:
@@ -377,6 +419,7 @@ class BaseCamera(abc.ABC):
             "rotation": self._rotation,
             "quality": self._quality,
             "format": self._format,
+            "tuning": self._tuning,
         }
         try:
             snap["controls"] = self.controls_state()
@@ -403,6 +446,7 @@ class BaseCamera(abc.ABC):
                 ("rotation", lambda v: self.set_orientation({"rotation": v})),
                 ("quality", lambda v: self.set_quality({"quality": v})),
                 ("format", lambda v: self.set_format({"format": v})),
+                ("tuning", lambda v: self.set_tuning({"tuning": v})),
                 ("controls", self.set_controls),
             ):
                 if key not in data:
@@ -575,6 +619,14 @@ class MockCamera(BaseCamera):
         self._save_settings()
         return self.controls_state()
 
+    def tuning_available(self) -> bool:
+        # Pretend to be a NoIR sensor so the Settings toggle and the
+        # preset-hiding behavior are both testable off-Pi.
+        return True
+
+    def wb_presets_supported(self) -> bool:
+        return self._tuning == "standard"
+
     def controls_state(self) -> dict:
         state = {
             "auto_exposure": self._auto_exposure,
@@ -720,46 +772,22 @@ class RealCamera(BaseCamera):
         from picamera2.outputs import FileOutput
 
         self._Picamera2 = Picamera2
-
-        # Optional tuning-file override (CAMERA_TUNING=imx708 or a .json
-        # path). Main use: running a NoIR sensor with the standard tuning so
-        # colour-temperature AWB (and the WB presets) work — at the cost of a
-        # calibration that assumes an IR-cut filter. Best-effort: a bad name
-        # logs and falls back to the default tuning rather than taking the
-        # camera down.
-        self._custom_tuning = False
-        tuning = None
-        tuning_spec = os.environ.get("CAMERA_TUNING")
-        if tuning_spec:
-            fname = (tuning_spec if tuning_spec.endswith(".json")
-                     else f"{tuning_spec}.json")
-            try:
-                tuning = Picamera2.load_tuning_file(fname)
-                self._custom_tuning = True
-            except Exception:
-                import logging
-                logging.getLogger(__name__).exception(
-                    "failed to load tuning file %r; using default", fname
-                )
-        self._picam2 = Picamera2(tuning=tuning)
+        self._MJPEGEncoder = MJPEGEncoder
+        self._FileOutput = FileOutput
         self._camera_lock = threading.RLock()
-
-        video_config = self._picam2.create_video_configuration(
-            main={"size": (self.WIDTH, self.HEIGHT)},
-            raw=self._full_fov_raw_stream(),
-        )
-        self._picam2.configure(video_config)
-
-        # Full-sensor still configuration for high-resolution captures. The
-        # streaming/main config above is only 1280x720; captures briefly switch
-        # to this (defaults to the sensor's maximum resolution) instead. The
-        # raw stream is included so DNG (raw) captures are available on demand.
-        self._still_config = self._picam2.create_still_configuration(raw={})
-
+        # One StreamingOutput for the process lifetime: preview generators
+        # hold a reference to it, so tuning rebuilds swap the camera/encoder
+        # underneath without breaking connected streams.
         self._output = self.StreamingOutput()
-        self._encoder = MJPEGEncoder()
-        self._file_output = FileOutput(self._output)
-        self._picam2.start_recording(self._encoder, self._file_output)
+
+        # Open with the persisted tuning choice (if any) so a saved
+        # "standard" tuning doesn't need a rebuild right after boot.
+        saved = self._store.load() or {}
+        if saved.get("tuning") in self.TUNINGS:
+            self._tuning = saved["tuning"]
+
+        self._picam2 = None
+        self._open_camera()
 
         # Exposure/focus/WB defaults applied to the live sensor. Apply without
         # persisting — restore_settings() (called after construction) loads any
@@ -773,6 +801,71 @@ class RealCamera(BaseCamera):
                 self._apply_focus()
         finally:
             self._restoring = False
+
+    def _open_camera(self) -> None:
+        """(Re)build the whole pipeline: camera, configs, MJPEG encoder."""
+        self._picam2 = self._Picamera2(tuning=self._load_tuning())
+
+        video_config = self._picam2.create_video_configuration(
+            main={"size": (self.WIDTH, self.HEIGHT)},
+            raw=self._full_fov_raw_stream(),
+        )
+        self._picam2.configure(video_config)
+
+        # Full-sensor still configuration for high-resolution captures. The
+        # streaming/main config above is only 1280x720; captures briefly switch
+        # to this (defaults to the sensor's maximum resolution) instead. The
+        # raw stream is included so DNG (raw) captures are available on demand.
+        self._still_config = self._picam2.create_still_configuration(raw={})
+
+        self._encoder = self._MJPEGEncoder()
+        self._file_output = self._FileOutput(self._output)
+        self._picam2.start_recording(self._encoder, self._file_output)
+
+    def _load_tuning(self):
+        """Tuning dict for the current self._tuning choice, or None (default).
+
+        "standard" maps a NoIR model to its filtered variant's tuning file
+        (imx708_noir -> imx708.json). Best-effort: any failure logs and falls
+        back to the default tuning rather than taking the camera down.
+        """
+        if self._tuning != "standard":
+            return None
+        try:
+            infos = self._Picamera2.global_camera_info()
+            model = str(infos[0].get("Model", "")) if infos else ""
+            if not model.endswith("_noir"):
+                return None  # already the standard tuning
+            return self._Picamera2.load_tuning_file(
+                model[: -len("_noir")] + ".json"
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "failed to load standard tuning; using the sensor default"
+            )
+            return None
+
+    def tuning_available(self) -> bool:
+        model = str(self._picam2.camera_properties.get("Model", ""))
+        return model.endswith("_noir")
+
+    def _apply_tuning(self) -> None:
+        # The tuning file is baked in at open time, so rebuild the pipeline,
+        # then re-apply the software-held state to the fresh camera.
+        with self._camera_lock:
+            self._picam2.stop_recording()
+            self._picam2.close()
+            self._open_camera()
+            was_restoring = self._restoring
+            self._restoring = True
+            try:
+                self.set_controls(self._state)
+                self._apply_white_balance()
+                if self.focus_available():
+                    self._apply_focus()
+            finally:
+                self._restoring = was_restoring
 
     def _full_fov_raw_stream(self):
         """Raw-stream spec that keeps the preview at the sensor's full FoV.
@@ -944,9 +1037,9 @@ class RealCamera(BaseCamera):
             })
 
     def wb_presets_supported(self) -> bool:
-        # A custom tuning (e.g. standard imx708 on a NoIR sensor) brings its
-        # own AWB config, so trust it to make AwbMode meaningful.
-        if self._custom_tuning:
+        # The standard tuning has colour-temperature AWB, making AwbMode
+        # meaningful even on a NoIR sensor.
+        if self._tuning == "standard":
             return True
         model = str(self._picam2.camera_properties.get("Model", ""))
         return not model.endswith("_noir")

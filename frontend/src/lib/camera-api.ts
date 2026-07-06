@@ -168,6 +168,28 @@ export function setWhiteBalance(
   return postJson("/camera/wb", "set white balance", settings);
 }
 
+// --- Colour tuning (NoIR sensors only) ---------------------------------------
+
+export type CameraTuning = {
+  // "default" = the sensor's own tuning; "standard" = the filtered variant's
+  // tuning, which enables colour-temperature AWB (WB presets) on NoIR.
+  tuning: "default" | "standard";
+  // False when there's no alternative tuning (non-NoIR cameras).
+  available: boolean;
+};
+
+export function getTuning(): Promise<CameraTuning> {
+  return getJson("/camera/tuning", "get tuning");
+}
+
+// Note: switching rebuilds the camera pipeline — the response takes a few
+// seconds and the preview stream restarts.
+export function setTuning(
+  settings: Partial<CameraTuning>,
+): Promise<CameraTuning> {
+  return postJson("/camera/tuning", "set tuning", settings);
+}
+
 // --- Orientation (rotation applied to captured images) ----------------------
 
 export type CameraOrientation = {

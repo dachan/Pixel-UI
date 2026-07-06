@@ -198,6 +198,20 @@ def camera_white_balance():
     return jsonify(camera.get_white_balance())
 
 
+@api.route("/camera/tuning", methods=["GET", "POST"])
+def camera_tuning():
+    """GET the colour tuning; POST {tuning} (default|standard) to set.
+
+    "standard" runs a NoIR sensor with the filtered variant's tuning file,
+    enabling colour-temperature AWB (WB presets). Switching rebuilds the
+    camera pipeline, which takes a few seconds. ``available`` is false on
+    cameras that have no alternative tuning (non-NoIR).
+    """
+    if request.method == "POST":
+        return jsonify(camera.set_tuning(request.get_json(silent=True) or {}))
+    return jsonify(camera.get_tuning())
+
+
 # --- System ------------------------------------------------------------------- #
 
 def _read_pi_temperatures():

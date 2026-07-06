@@ -73,6 +73,13 @@ export async function listCaptures(): Promise<string[]> {
   return data.captures;
 }
 
+// Delete every capture (JPEG + RAW) on the Pi. Returns how many were removed.
+export async function deleteAllCaptures(): Promise<number> {
+  const res = await fetch(`${BASE}/api/captures`, { method: "DELETE" });
+  const data = await parseJson<{ deleted: number }>(res, "delete captures");
+  return data.deleted;
+}
+
 // --- Camera metadata --------------------------------------------------------
 
 export type ControlRange = {

@@ -21,6 +21,7 @@ from camera_service import (
     CAPTURES_DIR,
     camera,
     capture_events,
+    delete_all_captures,
     do_capture,
     thermal,
     thumbnail_for,
@@ -90,9 +91,11 @@ def capture_event_stream():
     return Response(capture_events.stream(), mimetype="text/event-stream")
 
 
-@api.route("/captures")
+@api.route("/captures", methods=["GET", "DELETE"])
 def list_captures():
-    """List saved capture filenames, newest first."""
+    """GET the saved capture filenames (newest first); DELETE removes all."""
+    if request.method == "DELETE":
+        return jsonify(deleted=delete_all_captures())
     os.makedirs(CAPTURES_DIR, exist_ok=True)
     names = [
         f

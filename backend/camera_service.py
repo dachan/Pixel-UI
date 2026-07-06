@@ -64,6 +64,30 @@ def thumbnail_for(filename: str) -> str:
     return dst
 
 
+def delete_all_captures() -> int:
+    """Delete every capture (JPEG + DNG) and its cached thumbnail.
+
+    Returns the number of capture files removed (thumbs not counted).
+    """
+    deleted = 0
+    for directory, count_them in ((CAPTURES_DIR, True), (THUMBS_DIR, False)):
+        if not os.path.isdir(directory):
+            continue
+        for name in os.listdir(directory):
+            if not name.endswith((".jpg", ".dng")):
+                continue
+            path = os.path.join(directory, name)
+            if not os.path.isfile(path):
+                continue
+            try:
+                os.remove(path)
+                if count_them:
+                    deleted += 1
+            except OSError:
+                pass  # best-effort; report what actually went
+    return deleted
+
+
 def do_capture() -> dict:
     """Capture a still into CAPTURES_DIR; returns camera.capture()'s result."""
     capture_events.publish("start")

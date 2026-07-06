@@ -12,6 +12,7 @@ import {
   setTuning as saveTuning,
   systemTemperature,
   setThrottleEnabled,
+  deleteAllCaptures,
   exitKiosk,
   type CameraTuning,
   type CaptureFormatValue,
@@ -130,6 +131,22 @@ export default function CameraSettings({
       return;
     }
     exitKiosk(); // closes the browser; this page goes away
+  }
+
+  // Same two-tap confirm for the destructive delete-all.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<string | null>(null);
+  function onDeleteAllClick() {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      setDeleteResult(null);
+      window.setTimeout(() => setConfirmingDelete(false), 4000);
+      return;
+    }
+    setConfirmingDelete(false);
+    deleteAllCaptures()
+      .then((n) => setDeleteResult(`Deleted ${n} photo${n === 1 ? "" : "s"}.`))
+      .catch((e) => setDeleteResult(`Delete failed: ${errorMessage(e)}`));
   }
 
   return (
@@ -352,6 +369,34 @@ export default function CameraSettings({
             )}
           </section>
         )}
+
+        <section className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-bold text-zinc-300">
+              Delete all photos
+            </h2>
+            <p className="text-sm text-zinc-500">
+              Remove every capture (JPEG and RAW) from the Pi. This cannot be
+              undone.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onDeleteAllClick}
+            className={`rounded-xl border p-4 text-sm font-bold transition ${
+              confirmingDelete
+                ? "border-red-500 bg-red-600 text-white"
+                : "border-zinc-700 text-zinc-300 hover:border-red-500 hover:text-white"
+            }`}
+          >
+            {confirmingDelete
+              ? "Tap again to delete everything"
+              : "Delete all photos"}
+          </button>
+          {deleteResult && (
+            <p className="text-sm text-zinc-400">{deleteResult}</p>
+          )}
+        </section>
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">

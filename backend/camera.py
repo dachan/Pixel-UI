@@ -312,15 +312,14 @@ class BaseCamera(abc.ABC):
 
     def _settings_snapshot(self) -> dict:
         """Current persistable settings."""
+        # Focus and white balance are deliberately NOT persisted: manual
+        # focus/WB are per-scene tweaks, and the camera should always come
+        # back up in continuous AF + auto WB after a restart or reboot.
         snap = {
             "rotation": self._rotation,
             "quality": self._quality,
             "format": self._format,
-            # Intent state (not live values): what the user chose.
-            "white_balance": dict(self._wb),
         }
-        if self.focus_available():
-            snap["focus"] = dict(self._focus)
         try:
             snap["controls"] = self.controls_state()
         except Exception:
@@ -346,8 +345,6 @@ class BaseCamera(abc.ABC):
                 ("rotation", lambda v: self.set_orientation({"rotation": v})),
                 ("quality", lambda v: self.set_quality({"quality": v})),
                 ("format", lambda v: self.set_format({"format": v})),
-                ("focus", self.set_focus),
-                ("white_balance", self.set_white_balance),
                 ("controls", self.set_controls),
             ):
                 if key not in data:

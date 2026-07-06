@@ -29,10 +29,13 @@ camera = get_camera()
 capture_events = SseBroadcaster()
 
 # App-level thermal protection: drop the preview frame rate when the CPU
-# runs hot, restore when it cools (thresholds in thermal.py).
+# runs hot, restore when it cools (thresholds in thermal.py). The user can
+# turn it off in Settings; the choice persists with the camera settings
+# (restored by get_camera() above, hence read after it).
 thermal = ThermalMonitor(
     on_throttle=lambda: camera.set_throttled(True),
     on_resume=lambda: camera.set_throttled(False),
+    enabled=camera.get_throttle_enabled(),
 )
 
 

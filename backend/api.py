@@ -241,7 +241,18 @@ def system_temperature():
         temperatures=thermal_config.read_temperatures(),
         throttled=thermal.throttled,
         throttle_at=thermal_config.THROTTLE_C,
+        throttle_enabled=thermal.enabled,
     )
+
+
+@api.route("/system/throttle", methods=["GET", "POST"])
+def system_throttle():
+    """GET/POST {enabled} — whether thermal throttling may engage at all."""
+    if request.method == "POST":
+        enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
+        camera.set_throttle_enabled(enabled)  # persists the choice
+        thermal.set_enabled(enabled)          # acts on it (lifts if active)
+    return jsonify(enabled=thermal.enabled, throttled=thermal.throttled)
 
 
 @api.route("/system/exit-kiosk", methods=["POST"])

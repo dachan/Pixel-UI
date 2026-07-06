@@ -258,10 +258,18 @@ export type SystemThermal = {
   throttled: boolean;
   // The CPU temperature (°C) that triggers throttling.
   throttle_at: number;
+  // Whether thermal throttling may engage at all (user setting).
+  throttle_enabled: boolean;
 };
 
 export function systemTemperature(): Promise<SystemThermal> {
   return getJson("/system/temperature", "system temperature");
+}
+
+export function setThrottleEnabled(
+  enabled: boolean,
+): Promise<{ enabled: boolean; throttled: boolean }> {
+  return postJson("/system/throttle", "set throttle", { enabled });
 }
 
 // Close the kiosk browser and drop to the Pi desktop. The request often won't

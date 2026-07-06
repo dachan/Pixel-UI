@@ -193,6 +193,8 @@ class BaseCamera(abc.ABC):
         self._tuning = "default"
         # Thermal throttle flag (see thermal.py): reduces preview frame rate.
         self._throttled = False
+        # Whether the thermal monitor may throttle at all (user setting).
+        self._throttle_enabled = True
         # Settings persistence (see settings_store.py).
         self._store = SettingsStore()
         # Suppress saving while restoring (applying loaded values back).
@@ -384,6 +386,18 @@ class BaseCamera(abc.ABC):
     def _apply_throttle(self) -> None:
         """Make self._throttled take effect. Subclass hook."""
 
+    def get_throttle_enabled(self) -> bool:
+        return self._throttle_enabled
+
+    def set_throttle_enabled(self, enabled) -> None:
+        """Persist the user's thermal-throttling on/off choice.
+
+        The ThermalMonitor (camera_service) is what acts on it; this just
+        holds and persists the preference alongside the camera settings.
+        """
+        self._throttle_enabled = bool(enabled)
+        self._save_settings()
+
     # --- Colour tuning ---------------------------------------------------------- #
 
     def tuning_available(self) -> bool:
@@ -432,6 +446,7 @@ class BaseCamera(abc.ABC):
             "quality": self._quality,
             "format": self._format,
             "tuning": self._tuning,
+            "throttle_enabled": self._throttle_enabled,
         }
         try:
             snap["controls"] = self.controls_state()
@@ -459,6 +474,7 @@ class BaseCamera(abc.ABC):
                 ("quality", lambda v: self.set_quality({"quality": v})),
                 ("format", lambda v: self.set_format({"format": v})),
                 ("tuning", lambda v: self.set_tuning({"tuning": v})),
+                ("throttle_enabled", self.set_throttle_enabled),
                 ("controls", self.set_controls),
             ):
                 if key not in data:

@@ -11,6 +11,7 @@ import {
   getTuning,
   setTuning as saveTuning,
   systemTemperature,
+  setThrottleEnabled,
   exitKiosk,
   type CameraTuning,
   type CaptureFormatValue,
@@ -101,6 +102,14 @@ export default function CameraSettings({
       .catch((e) => setError(errorMessage(e)));
   }
 
+  function applyThrottleEnabled(enabled: boolean) {
+    // Optimistic; the 2s temperature polling reconciles with the backend.
+    setThermal((prev) =>
+      prev ? { ...prev, throttle_enabled: enabled } : prev,
+    );
+    setThrottleEnabled(enabled).catch((e) => setError(errorMessage(e)));
+  }
+
   function applyTuning(value: "default" | "standard") {
     // No optimistic update: the camera pipeline rebuild takes a few seconds,
     // so show a busy state until the backend confirms.
@@ -157,6 +166,15 @@ export default function CameraSettings({
             </p>
           )}
         </section>
+
+        {thermal && (
+          <SettingToggle
+            title="Thermal throttling"
+            description={`Drop the preview to 10 fps when the CPU passes ${Math.round(thermal.throttle_at)} °C, to keep the Pi cool.`}
+            checked={thermal.throttle_enabled}
+            onChange={applyThrottleEnabled}
+          />
+        )}
 
         <SettingToggle
           title="Rule-of-thirds grid"

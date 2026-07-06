@@ -63,7 +63,8 @@ def read_temperatures() -> dict[str, float]:
 class ThermalMonitor:
     """Background thread flipping throttle callbacks on temperature crossings."""
 
-    def __init__(self, on_throttle, on_resume):
+    def __init__(self, on_throttle, on_resume, enabled=True):
+        self.enabled = bool(enabled)
         self.throttled = False
         self._on_throttle = on_throttle
         self._on_resume = on_resume
@@ -72,10 +73,18 @@ class ThermalMonitor:
         )
         thread.start()
 
+    def set_enabled(self, enabled: bool) -> None:
+        """Turn monitoring on/off; disabling lifts an active throttle."""
+        self.enabled = bool(enabled)
+        if not self.enabled and self.throttled:
+            self.throttled = False
+            logger.warning("thermal throttling disabled: resuming full rate")
+            self._safely(self._on_resume)
+
     def _run(self):
         while True:
             try:
-                temps = read_temperatures()
+                temps = read_temperatures() if self.enabled else None
                 temp = max(temps.values()) if temps else None
                 if temp is not None:
                     if not self.throttled and temp >= THROTTLE_C:

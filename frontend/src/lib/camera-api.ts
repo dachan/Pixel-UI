@@ -260,6 +260,7 @@ export function setFormat(
 export type SystemTemperatures = Record<string, number>;
 
 export type SystemThermal = {
+  battery_level: number | null;
   temperatures: SystemTemperatures;
   // True while the app is reducing preview frame rate to cool the Pi.
   throttled: boolean;

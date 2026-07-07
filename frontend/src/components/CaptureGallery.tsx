@@ -53,13 +53,15 @@ export default function CaptureGallery() {
             onClick={() => setSelected(filename)}
             className="cursor-pointer overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 transition hover:border-zinc-600"
           >
-            <img
-              src={captureThumbUrl(filename)}
-              alt={filename}
-              loading="lazy"
-              decoding="async"
-              className="aspect-video w-full object-cover"
-            />
+            <div className="flex aspect-video w-full items-center justify-center bg-zinc-950">
+              <img
+                src={captureThumbUrl(filename)}
+                alt={filename}
+                loading="lazy"
+                decoding="async"
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
             <figcaption className="truncate px-2 py-1.5 font-mono text-xs text-zinc-400">
               {filename}
             </figcaption>

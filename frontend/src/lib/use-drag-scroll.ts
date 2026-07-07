@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 //
 // A short drag threshold distinguishes a tap (let the click through) from a
 // scroll (swallow the click so you don't accidentally trigger a button).
+// Buttons and links are excluded in onDown so their clicks are never swallowed.
 export function useDragScroll<T extends HTMLElement>() {
   const ref = useRef<T>(null);
 
@@ -27,10 +28,11 @@ export function useDragScroll<T extends HTMLElement>() {
 
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0 && e.pointerType === "mouse") return; // left/primary only
-      // Don't hijack draggable form controls (sliders move on drag too). Buttons
-      // and links are fine — the tap/drag threshold below handles those.
+      // Don't hijack draggable form controls (sliders move on drag too).
       const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, select, [role='slider']")) return;
+      if (target.closest("input, textarea, select, [role='slider'], button, a")) {
+        return;
+      }
       dragging = true;
       startY = e.clientY;
       startTop = el.scrollTop;

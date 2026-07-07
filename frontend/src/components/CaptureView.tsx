@@ -54,7 +54,7 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
     setFocusRing({ x, y, key });
     window.setTimeout(
       () => setFocusRing((ring) => (ring?.key === key ? null : ring)),
-      FOCUS_RING_MS,
+      FOCUS_RING_MS
     );
     focusAtPoint(x, y).catch(() => {});
   }

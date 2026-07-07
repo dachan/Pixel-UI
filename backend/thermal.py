@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 THROTTLE_C = float(os.environ.get("THERMAL_THROTTLE_C", 60.0))
 RESUME_C = float(os.environ.get("THERMAL_RESUME_C", THROTTLE_C - 5.0))
 CHECK_INTERVAL_S = 10.0
+I2C_SLAVE = 0x0703
+X1201_I2C_BUS = "/dev/i2c-1"
+X1201_FUEL_GAUGE_ADDR = 0x36
+X1201_CAPACITY_REG = 0x04
 
 
 def read_temperatures() -> dict[str, float]:
@@ -58,6 +62,49 @@ def read_temperatures() -> dict[str, float]:
         temps["cpu-thermal"] = round(45.0 + wobble * 10.0, 1)
 
     return temps
+
+
+def read_battery_level() -> int | None:
+    """Read a battery/UPS percentage from Linux power-supply sysfs, if present."""
+    for supply in sorted(glob.glob("/sys/class/power_supply/*")):
+        try:
+            with open(os.path.join(supply, "type")) as f:
+                supply_type = f.read().strip().lower()
+        except OSError:
+            supply_type = ""
+        if supply_type not in {"battery", "ups"}:
+            continue
+        try:
+            with open(os.path.join(supply, "capacity")) as f:
+                return max(0, min(100, int(f.read().strip())))
+        except (OSError, ValueError):
+            continue
+    level = _read_x1201_battery_level()
+    if level is not None:
+        return level
+    if os.environ.get("CAMERA") != "real":
+        wobble = math.sin(time.time() * 0.08) * 0.5 + 0.5  # 0..1
+        return round(72 + wobble * 24)
+    return None
+
+
+def _read_x1201_battery_level() -> int | None:
+    """Read Geekworm X1201/MAX1704x capacity over I2C, if the UPS is present."""
+    try:
+        import fcntl
+
+        with open(X1201_I2C_BUS, "r+b", buffering=0) as bus:
+            fcntl.ioctl(bus, I2C_SLAVE, X1201_FUEL_GAUGE_ADDR)
+            bus.write(bytes([X1201_CAPACITY_REG]))
+            data = bus.read(2)
+    except OSError:
+        return None
+
+    if len(data) != 2:
+        return None
+    # MAX1704x capacity is an 8.8 fixed-point percentage, big-endian.
+    capacity = ((data[0] << 8) | data[1]) / 256.0
+    return max(0, min(100, round(capacity)))
 
 
 class ThermalMonitor:

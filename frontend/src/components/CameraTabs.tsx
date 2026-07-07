@@ -6,6 +6,7 @@ import CameraControls from "@/components/CameraControls";
 import CameraMeta from "@/components/CameraMeta";
 import CaptureGallery from "@/components/CaptureGallery";
 import CameraSettings from "@/components/CameraSettings";
+import StatusRow from "@/components/StatusRow";
 import Tabs from "@/components/Tabs";
 import { useStoredBool } from "@/lib/use-stored-bool";
 
@@ -26,14 +27,14 @@ export default function CameraTabs() {
   // on the physical GPIO shutter button, to keep the kiosk UI uncluttered.
   const [showCaptureButton, setShowCaptureButton] = useStoredBool(
     "showCaptureButton",
-    true,
+    true
   );
 
   return (
     <div className="flex w-full flex-1 flex-col gap-3 overflow-hidden">
+      <StatusRow />
       <Tabs tabs={TABS} active={active} onChange={setActive} />
-
-      <div className="min-h-0 flex-1 w-full">
+      <div className="min-h-0 flex-1 w-full p-3">
         {active === "camera" ? (
           <div className="flex gap-4 w-full h-full">
             <div className="w-2/3 flex items-center justify-center overflow-hidden h-full">

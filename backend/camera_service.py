@@ -93,7 +93,7 @@ def do_capture() -> dict:
     capture_events.publish("start")
     try:
         os.makedirs(CAPTURES_DIR, exist_ok=True)
-        base = datetime.now().strftime("capture-%Y%m%d-%H%M%S-%f")
+        base = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         path = os.path.join(CAPTURES_DIR, base + ".jpg")
         return camera.capture(path)
     finally:

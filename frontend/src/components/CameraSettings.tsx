@@ -33,12 +33,6 @@ const FORMATS: { value: CaptureFormatValue; label: string; hint: string }[] = [
   { value: "raw", label: "RAW", hint: "DNG raw only — not shown in Gallery." },
 ];
 
-// Friendlier names for known thermal-zone labels.
-function tempLabel(raw: string): string {
-  if (raw === "cpu-thermal") return "CPU";
-  return raw;
-}
-
 export default function CameraSettings({
   showGrid,
   onGridChange,
@@ -112,8 +106,7 @@ export default function CameraSettings({
   }
 
   function applyTuning(value: "default" | "standard") {
-    // No optimistic update: the camera pipeline rebuild takes a few seconds,
-    // so show a busy state until the backend confirms.
+    setTuning((prev) => (prev ? { ...prev, tuning: value } : prev));
     setTuningBusy(true);
     setError(null);
     saveTuning({ tuning: value })
@@ -152,45 +145,21 @@ export default function CameraSettings({
   return (
     <DragScrollArea>
       <div className="flex flex-col gap-6">
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-bold text-zinc-300">Temperature</h2>
-          {thermal === null ? (
-            <p className="text-sm text-zinc-500">loading…</p>
-          ) : Object.keys(thermal.temperatures).length === 0 ? (
-            <p className="text-sm text-zinc-500">unavailable on this host</p>
-          ) : (
-            <dl className="flex flex-col gap-1">
-              {Object.entries(thermal.temperatures).map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-3 text-sm">
-                  <dt className="text-zinc-400">{tempLabel(k)}</dt>
-                  <dd
-                    className={`font-mono ${
-                      v >= thermal.throttle_at
-                        ? "text-amber-400"
-                        : "text-zinc-100"
-                    }`}
-                  >
-                    {v.toFixed(1)} °C
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {thermal?.throttled && (
-            <p className="text-sm font-bold text-amber-400">
-              Thermal throttling active — preview limited to 10 fps until the
-              Pi cools below {Math.round(thermal.throttle_at - 5)} °C.
-            </p>
-          )}
-        </section>
-
         {thermal && (
-          <SettingToggle
-            title="Thermal throttling"
-            description={`Drop the preview to 10 fps when the CPU passes ${Math.round(thermal.throttle_at)} °C, to keep the Pi cool.`}
-            checked={thermal.throttle_enabled}
-            onChange={applyThrottleEnabled}
-          />
+          <section className="flex flex-col gap-2">
+            <SettingToggle
+              title="Thermal throttling"
+              description={`Drop the preview to 10 fps when the CPU passes ${Math.round(thermal.throttle_at)} °C, to keep the Pi cool.`}
+              checked={thermal.throttle_enabled}
+              onChange={applyThrottleEnabled}
+            />
+            {thermal.throttled && (
+              <p className="text-sm font-bold text-amber-400">
+                Thermal throttling active — preview limited to 10 fps until the
+                Pi cools below {Math.round(thermal.throttle_at - 5)} °C.
+              </p>
+            )}
+          </section>
         )}
 
         <SettingToggle

@@ -241,6 +241,7 @@ def camera_tuning():
 def system_temperature():
     """Pi temperatures plus the app's thermal-throttle state."""
     return jsonify(
+        battery_level=thermal_config.read_battery_level(),
         temperatures=thermal_config.read_temperatures(),
         throttled=thermal.throttled,
         throttle_at=thermal_config.THROTTLE_C,

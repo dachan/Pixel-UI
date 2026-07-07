@@ -27,6 +27,17 @@ I2C_SLAVE = 0x0703
 X1201_I2C_BUS = "/dev/i2c-1"
 X1201_FUEL_GAUGE_ADDR = 0x36
 X1201_CAPACITY_REG = 0x04
+X1201_VCELL_REG = 0x02
+# VCELL LSB in volts (MAX1704x: 78.125 µV). Works for both MAX17040 and
+# MAX17048 — the /16 vs ×16 scale difference cancels to the same value.
+X1201_VCELL_LSB_V = 78.125e-6
+# Percentage is derived from cell voltage (not the gauge's SOC register), to
+# match the board's own voltage-based LED bars — its ModelGauge SOC reads
+# markedly different (higher SOC than the LEDs show). Linear map between a
+# near-empty and full single-cell Li-ion voltage; sags under load exactly like
+# the LEDs do. Tune these if the number drifts from the bars.
+BATTERY_EMPTY_V = 3.3
+BATTERY_FULL_V = 4.2
 
 
 def read_temperatures() -> dict[str, float]:
@@ -89,22 +100,28 @@ def read_battery_level() -> int | None:
 
 
 def _read_x1201_battery_level() -> int | None:
-    """Read Geekworm X1201/MAX1704x capacity over I2C, if the UPS is present."""
+    """Battery % from the Geekworm X1201/MAX1704x cell voltage over I2C.
+
+    Uses VCELL (not the gauge's SOC register) mapped linearly across
+    BATTERY_EMPTY_V..BATTERY_FULL_V, so the percentage tracks the board's
+    voltage-based LED bars rather than the ModelGauge SOC (which reads
+    higher than the LEDs indicate). Returns None if the UPS isn't present.
+    """
     try:
         import fcntl
 
         with open(X1201_I2C_BUS, "r+b", buffering=0) as bus:
             fcntl.ioctl(bus, I2C_SLAVE, X1201_FUEL_GAUGE_ADDR)
-            bus.write(bytes([X1201_CAPACITY_REG]))
+            bus.write(bytes([X1201_VCELL_REG]))
             data = bus.read(2)
     except OSError:
         return None
 
     if len(data) != 2:
         return None
-    # MAX1704x capacity is an 8.8 fixed-point percentage, big-endian.
-    capacity = ((data[0] << 8) | data[1]) / 256.0
-    return max(0, min(100, round(capacity)))
+    volts = ((data[0] << 8) | data[1]) * X1201_VCELL_LSB_V
+    fraction = (volts - BATTERY_EMPTY_V) / (BATTERY_FULL_V - BATTERY_EMPTY_V)
+    return max(0, min(100, round(fraction * 100)))
 
 
 class ThermalMonitor:

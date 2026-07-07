@@ -127,7 +127,7 @@ export default function CameraSettings({
       window.setTimeout(() => setConfirmingExit(false), 4000);
       return;
     }
-    exitKiosk(); // closes the browser; this page goes away
+    exitKiosk(); // reboots into the desktop; this page goes away
   }
 
   // Same two-tap confirm for the destructive delete-all.
@@ -387,7 +387,8 @@ export default function CameraSettings({
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-bold text-stone-500">Exit kiosk</h2>
             <p className="text-sm text-stone-500">
-              Close the app and return to the Pi desktop.
+              Reboot into the Pi desktop for one session. The next reboot
+              returns to kiosk mode.
             </p>
           </div>
           <button
@@ -400,7 +401,7 @@ export default function CameraSettings({
             }`}
           >
             {confirmingExit
-              ? "Tap again to exit to desktop"
+              ? "Tap again to reboot to desktop"
               : "Exit to desktop"}
           </button>
         </section>

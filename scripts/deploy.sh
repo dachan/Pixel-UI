@@ -59,6 +59,15 @@ rsync -az "${RENDERED_SERVICE}" "${PI_TARGET}:${PI_DIR}/ircam-api.service"
 # labwc kiosk config (device-agnostic touch rule for swipe-to-scroll).
 rsync -az _deploy/labwc-rc.xml "${PI_TARGET}:${PI_DIR}/labwc-rc.xml"
 
+# Kiosk launcher + labwc autostart (boots straight into the kiosk). The
+# autostart is rendered from its template with the configured PI_DIR.
+rsync -az _deploy/kiosk.sh "${PI_TARGET}:${PI_DIR}/kiosk.sh"
+RENDERED_AUTOSTART="$(mktemp)"
+trap 'rm -f "${RENDERED_SERVICE}" "${RENDERED_AUTOSTART}"' EXIT
+sed -e "s|__PI_DIR__|${PI_DIR}|g" \
+    _deploy/labwc-autostart.tpl > "${RENDERED_AUTOSTART}"
+rsync -az "${RENDERED_AUTOSTART}" "${PI_TARGET}:${PI_DIR}/labwc-autostart"
+
 echo "==> [3/3] Installing deps, restarting service"
 ssh "${PI_TARGET}" bash -s <<EOF
 set -euo pipefail
@@ -80,10 +89,18 @@ sudo systemctl restart ircam-api.service
 # Install the labwc touch config if it differs; touch-input config only takes
 # effect after a compositor restart, so flag a reboot when it changes.
 mkdir -p ~/.config/labwc
+chmod +x "${PI_DIR}/kiosk.sh"
 if ! cmp -s "${PI_DIR}/labwc-rc.xml" ~/.config/labwc/rc.xml 2>/dev/null; then
   [ -f ~/.config/labwc/rc.xml ] && cp ~/.config/labwc/rc.xml ~/.config/labwc/rc.xml.bak
   cp "${PI_DIR}/labwc-rc.xml" ~/.config/labwc/rc.xml
   echo "REBOOT_REQUIRED: labwc touch config updated (run: sudo reboot)"
+fi
+# Install the labwc autostart so the Pi boots straight into the kiosk. Only
+# takes effect on the next login/boot, so flag a reboot when it changes.
+if ! cmp -s "${PI_DIR}/labwc-autostart" ~/.config/labwc/autostart 2>/dev/null; then
+  [ -f ~/.config/labwc/autostart ] && cp ~/.config/labwc/autostart ~/.config/labwc/autostart.bak
+  cp "${PI_DIR}/labwc-autostart" ~/.config/labwc/autostart
+  echo "REBOOT_REQUIRED: kiosk autostart updated (run: sudo reboot)"
 fi
 EOF
 

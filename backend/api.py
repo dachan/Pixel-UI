@@ -267,12 +267,19 @@ def system_throttle():
 
 @api.route("/system/exit-kiosk", methods=["POST"])
 def exit_kiosk():
-    """Close the kiosk browser and drop to the desktop.
+    """Reboot into the desktop once, then back to the kiosk.
 
-    Stops the labwc respawner first (so Chromium isn't relaunched), then closes
-    only the kiosk browser (matched by its ``--kiosk`` flag, so a normal dev
-    browser is never touched). Same-user pkill, no sudo. No-op off the Pi.
+    Writes a one-shot flag the kiosk launcher (kiosk.sh) honors on the next
+    boot — staying on the plain desktop instead of launching Chromium — then
+    reboots. The boot after that finds no flag and returns to kiosk mode.
+    No-op off the Pi (guarded on CAMERA=real) so dev machines never reboot.
     """
-    subprocess.run(["pkill", "-f", "lwrespawn"], check=False)
-    subprocess.run(["pkill", "-f", "--", "--kiosk"], check=False)
-    return jsonify(status="exiting")
+    if os.environ.get("CAMERA") != "real":
+        return jsonify(status="noop-off-pi")
+    flag = os.path.join(os.path.expanduser("~"), ".ircam-boot-to-desktop")
+    try:
+        open(flag, "w").close()
+    except OSError:
+        pass
+    subprocess.run(["sudo", "reboot"], check=False)
+    return jsonify(status="rebooting")

@@ -21,7 +21,7 @@ export default function Tabs<T extends string>({
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`flex-1 truncate rounded-sm border border-stone-300 bg-stone-100 px-4 py-2 font-mono text-sm font-bold transition ${
+          className={`flex-1 truncate rounded-sm border border-stone-300 bg-stone-100 px-4 py-2 text-sm transition ${
             active === tab.id
               ? "text-orange-500 shadow-xs brightness-95"
               : "text-stone-500 shadow-lg"

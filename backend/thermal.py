@@ -13,11 +13,17 @@ import glob
 import logging
 import math
 import os
+import subprocess
 import threading
 import time
 from collections import deque
 
 logger = logging.getLogger(__name__)
+
+# CPU frequency policies (Pi 5: all cores share one clock, but glob covers any
+# layout). When throttling, scaling_max_freq is pinned to the hardware minimum
+# to cut heat (power scales ~V²·f); on resume it's restored to the maximum.
+_CPU_POLICY_GLOB = "/sys/devices/system/cpu/cpufreq/policy*"
 
 # Throttle above this CPU temperature (°C); resume below RESUME_C.
 # Overridable via env for testing on cool hardware.
@@ -162,6 +168,42 @@ def _read_x1201_battery_level() -> int | None:
         return None
     # SOC is an 8.8 fixed-point percentage, big-endian.
     return max(0, min(100, round(((data[0] << 8) | data[1]) / 256.0)))
+
+
+def _cpu_freq_bounds() -> tuple[int, int] | None:
+    """(min, max) CPU frequency in kHz from cpufreq sysfs, or None off-Pi."""
+    for policy in sorted(glob.glob(_CPU_POLICY_GLOB)):
+        try:
+            with open(os.path.join(policy, "cpuinfo_min_freq")) as f:
+                lo = int(f.read().strip())
+            with open(os.path.join(policy, "cpuinfo_max_freq")) as f:
+                hi = int(f.read().strip())
+            return lo, hi
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def set_cpu_throttled(throttled: bool) -> None:
+    """Cap (or restore) the CPU max frequency for thermal management.
+
+    Pins scaling_max_freq to the hardware minimum when throttled, back to the
+    maximum on resume, across all cpufreq policies. Needs root, via passwordless
+    sudo. No-op off the Pi (no cpufreq sysfs).
+    """
+    bounds = _cpu_freq_bounds()
+    if bounds is None:
+        return
+    lo, hi = bounds
+    target = lo if throttled else hi
+    # One sudo call writes every policy's scaling_max_freq.
+    script = (
+        f'for f in {_CPU_POLICY_GLOB}/scaling_max_freq; do '
+        f'echo {target} > "$f"; done'
+    )
+    result = subprocess.run(["sudo", "sh", "-c", script], check=False)
+    if result.returncode != 0:
+        logger.warning("failed to set CPU max freq to %d kHz", target)
 
 
 class ThermalMonitor:

@@ -13,7 +13,7 @@ from datetime import datetime
 
 from camera import get_camera
 from events import SseBroadcaster
-from thermal import ThermalMonitor
+from thermal import ThermalMonitor, set_cpu_throttled
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 CAPTURES_DIR = os.path.join(BACKEND_DIR, "captures")
@@ -28,13 +28,15 @@ camera = get_camera()
 # "start"/"done" is published here around every capture, from any trigger.
 capture_events = SseBroadcaster()
 
-# App-level thermal protection: drop the preview frame rate when the CPU
-# runs hot, restore when it cools (thresholds in thermal.py). The user can
-# turn it off in Settings; the choice persists with the camera settings
-# (restored by get_camera() above, hence read after it).
+# App-level thermal protection: cap the CPU frequency when it runs hot,
+# restore when it cools (thresholds in thermal.py). The user can turn it off
+# in Settings; the choice persists with the camera settings (restored by
+# get_camera() above, hence read after it). Establish a clean baseline
+# (uncapped) at startup in case a prior crash left the CPU pinned low.
+set_cpu_throttled(False)
 thermal = ThermalMonitor(
-    on_throttle=lambda: camera.set_throttled(True),
-    on_resume=lambda: camera.set_throttled(False),
+    on_throttle=lambda: set_cpu_throttled(True),
+    on_resume=lambda: set_cpu_throttled(False),
     enabled=camera.get_throttle_enabled(),
 )
 

@@ -153,16 +153,16 @@ export default function CameraSettings({
           <section className="flex flex-col gap-2">
             <SettingToggle
               title="Thermal throttling"
-              description={`Drop the preview to 10 fps when the CPU passes ${Math.round(
+              description={`Cap the CPU to 1.5 GHz when it passes ${Math.round(
                 thermal.throttle_at,
-              )} °C, to keep the Pi cool.`}
+              )} °C, to keep the Pi cool. Slows captures and the UI while active.`}
               checked={thermal.throttle_enabled}
               onChange={applyThrottleEnabled}
             />
             {thermal.throttled && (
               <p className="text-sm font-bold text-amber-400">
-                Thermal throttling active — preview limited to 10 fps until the
-                Pi cools below {Math.round(thermal.throttle_at - 5)} °C.
+                Thermal throttling active — CPU capped at 1.5 GHz until the Pi
+                cools below {Math.round(thermal.throttle_at - 5)} °C.
               </p>
             )}
           </section>

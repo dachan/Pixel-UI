@@ -246,8 +246,11 @@ def camera_tuning():
 @api.route("/system/temperature")
 def system_temperature():
     """Pi temperatures plus the app's thermal-throttle state."""
+    volts = thermal_config.read_battery_voltage()
     return jsonify(
         battery_level=thermal_config.read_battery_level(),
+        battery_volts=round(volts, 2) if volts is not None else None,
+        charging=thermal.charging,
         temperatures=thermal_config.read_temperatures(),
         throttled=thermal.throttled,
         throttle_at=thermal_config.THROTTLE_C,

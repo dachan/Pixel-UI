@@ -39,7 +39,7 @@ export default function CameraControls({
   }
 
   return (
-    <section className="flex h-full flex-col gap-4">
+    <section className="flex h-full w-full flex-col gap-4">
       <div className="shrink-0">
         <Tabs tabs={CONTROL_TABS} active={panel} onChange={setPanel} />
       </div>

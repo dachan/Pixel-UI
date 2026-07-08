@@ -267,6 +267,11 @@ export type SystemTemperatures = Record<string, number>;
 
 export type SystemThermal = {
   battery_level: number | null;
+  // Cell voltage (V), for cross-checking against the board's LED bars.
+  battery_volts: number | null;
+  // True while charging, false on battery, null until known. Inferred from
+  // the voltage trend (the fuel gauge has no charge flag).
+  charging: boolean | null;
   temperatures: SystemTemperatures;
   // True while the app is reducing preview frame rate to cool the Pi.
   throttled: boolean;

@@ -15,6 +15,7 @@ import math
 import os
 import threading
 import time
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,15 @@ X1201_VCELL_LSB_V = 78.125e-6
 # the LEDs do. Tune these if the number drifts from the bars.
 BATTERY_EMPTY_V = 3.3
 BATTERY_FULL_V = 4.2
+
+# Charging detection. This fuel gauge exposes no charge flag (its CRATE
+# register is unimplemented), so charging is inferred from the cell-voltage
+# trend: a rise over the window means the charger is pushing current in; a
+# fall means the Pi is running the battery down. A flat, near-full voltage is
+# the charger holding the cell topped up (CV phase).
+CHARGE_WINDOW_S = 90
+CHARGE_RISE_V = 0.01
+BATTERY_FULL_HOLD_V = 4.15
 
 
 def read_temperatures() -> dict[str, float]:
@@ -99,14 +109,26 @@ def read_battery_level() -> int | None:
     return None
 
 
-def _read_x1201_battery_level() -> int | None:
-    """Battery % from the Geekworm X1201/MAX1704x cell voltage over I2C.
+def read_battery_voltage() -> float | None:
+    """Battery cell voltage in volts, or None if no battery/UPS is present.
 
-    Uses VCELL (not the gauge's SOC register) mapped linearly across
-    BATTERY_EMPTY_V..BATTERY_FULL_V, so the percentage tracks the board's
-    voltage-based LED bars rather than the ModelGauge SOC (which reads
-    higher than the LEDs indicate). Returns None if the UPS isn't present.
+    Prefers a Linux power-supply ``voltage_now`` (µV), falling back to the
+    Geekworm X1201 fuel gauge over I2C.
     """
+    for supply in sorted(glob.glob("/sys/class/power_supply/*")):
+        try:
+            with open(os.path.join(supply, "type")) as f:
+                if f.read().strip().lower() not in {"battery", "ups"}:
+                    continue
+            with open(os.path.join(supply, "voltage_now")) as f:
+                return int(f.read().strip()) / 1_000_000.0
+        except (OSError, ValueError):
+            continue
+    return _read_x1201_voltage()
+
+
+def _read_x1201_voltage() -> float | None:
+    """Cell voltage (V) from the Geekworm X1201/MAX1704x VCELL over I2C."""
     try:
         import fcntl
 
@@ -116,10 +138,18 @@ def _read_x1201_battery_level() -> int | None:
             data = bus.read(2)
     except OSError:
         return None
-
     if len(data) != 2:
         return None
-    volts = ((data[0] << 8) | data[1]) * X1201_VCELL_LSB_V
+    return ((data[0] << 8) | data[1]) * X1201_VCELL_LSB_V
+
+
+def _read_x1201_battery_level() -> int | None:
+    """Battery % from the X1201 cell voltage (not the gauge's SOC register),
+    mapped linearly across BATTERY_EMPTY_V..BATTERY_FULL_V so it tracks the
+    board's voltage-based LED bars. None if the UPS isn't present."""
+    volts = _read_x1201_voltage()
+    if volts is None:
+        return None
     fraction = (volts - BATTERY_EMPTY_V) / (BATTERY_FULL_V - BATTERY_EMPTY_V)
     return max(0, min(100, round(fraction * 100)))
 
@@ -130,12 +160,35 @@ class ThermalMonitor:
     def __init__(self, on_throttle, on_resume, enabled=True):
         self.enabled = bool(enabled)
         self.throttled = False
+        # None until the first battery reading; then True/False (charging).
+        self.charging = None
+        self._volts = deque()  # (monotonic_time, volts) over CHARGE_WINDOW_S
         self._on_throttle = on_throttle
         self._on_resume = on_resume
         thread = threading.Thread(
             target=self._run, name="thermal-monitor", daemon=True
         )
         thread.start()
+
+    def _update_charging(self) -> None:
+        """Infer charging from the cell-voltage trend (see CHARGE_* consts)."""
+        volts = read_battery_voltage()
+        if volts is None:
+            return
+        now = time.monotonic()
+        self._volts.append((now, volts))
+        while self._volts and now - self._volts[0][0] > CHARGE_WINDOW_S:
+            self._volts.popleft()
+        delta = volts - self._volts[0][1]
+        if delta >= CHARGE_RISE_V:
+            self.charging = True
+        elif delta <= -CHARGE_RISE_V:
+            self.charging = False
+        elif volts >= BATTERY_FULL_HOLD_V:
+            # Flat and near-full: the charger is holding it topped up.
+            self.charging = True
+        elif self.charging is None:
+            self.charging = False  # flat mid-range at startup: assume on battery
 
     def set_enabled(self, enabled: bool) -> None:
         """Turn monitoring on/off; disabling lifts an active throttle."""
@@ -148,6 +201,7 @@ class ThermalMonitor:
     def _run(self):
         while True:
             try:
+                self._update_charging()  # runs regardless of throttle setting
                 temps = read_temperatures() if self.enabled else None
                 temp = max(temps.values()) if temps else None
                 if temp is not None:

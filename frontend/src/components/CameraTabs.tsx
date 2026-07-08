@@ -34,15 +34,15 @@ export default function CameraTabs() {
   );
 
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-3">
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-3 pb-3">
       <Tabs tabs={TABS} active={active} onChange={setActive} />
-      <div className="min-h-0 w-full flex-1 p-3">
+      <div className="flex h-full min-h-0 w-full">
         {active === "camera" ? (
-          <div className="flex h-full w-full flex-col gap-4">
-            <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+          <div className="flex h-full w-full gap-4">
+            <div className="flex min-h-0 w-2/3 items-center justify-center">
               <CameraPreview showGrid={showGrid} />
             </div>
-            <div className="flex h-80 w-full shrink-0 flex-col">
+            <div className="flex h-full w-1/3">
               <CameraControls showCaptureButton={showCaptureButton} />
             </div>
           </div>

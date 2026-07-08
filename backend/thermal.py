@@ -47,7 +47,11 @@ BATTERY_FULL_V = 4.2
 # the charger holding the cell topped up (CV phase).
 CHARGE_WINDOW_S = 90
 CHARGE_RISE_V = 0.01
-BATTERY_FULL_HOLD_V = 4.15
+# Flat voltage held at/above this means the charger is present: under the Pi's
+# constant load a battery on battery power sags and steadily declines, so it
+# can't hold a high voltage flat. Set below the ~4.1 V charge plateau so the
+# slow constant-voltage phase near full still reads as charging.
+BATTERY_FULL_HOLD_V = 4.05
 
 
 def read_temperatures() -> dict[str, float]:

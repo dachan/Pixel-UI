@@ -800,14 +800,27 @@ class RealCamera(BaseCamera):
     """Raspberry Pi camera via picamera2.
 
     Streams MJPEG through a :class:`StreamingOutput` (an ``io.BufferedIOBase``
-    guarded by a ``threading.Condition``) fed by picamera2's ``MJPEGEncoder``.
+    guarded by a ``threading.Condition``) fed by picamera2's ``JpegEncoder``.
+
+    JpegEncoder (simplejpeg/libjpeg-turbo, multi-threaded) rather than the
+    default MJPEGEncoder (which resolves to LibavMjpegEncoder — ffmpeg-based
+    — since this platform has no hardware encoder; confirmed via picamera2's
+    own _hw_encoder_available check and by enumerating every V4L2 device on
+    the board, none of which expose an encoder, only an HEVC *decoder*).
+    Measured on this hardware at identical resolution/framerate: ~40% less
+    CPU for the same output (34.6% -> 20.6% of a core at 1280x720/24fps).
     """
 
     WIDTH = 1280
     HEIGHT = 720
+    # JPEG quality (0-100) for the live preview only — separate from capture
+    # quality (user-controlled, PIL-encoded in _save_still_jpeg). Chosen to
+    # look comparable to the previous encoder's output at a glance; easy to
+    # retune here if the preview looks noticeably different.
+    PREVIEW_JPEG_QUALITY = 80
 
     class StreamingOutput(io.BufferedIOBase):
-        """Receives encoded JPEG frames from the MJPEGEncoder file output."""
+        """Receives encoded JPEG frames from the JpegEncoder file output."""
 
         def __init__(self):
             self.frame = None
@@ -823,11 +836,11 @@ class RealCamera(BaseCamera):
         super().__init__()
         # Lazy, Pi-only imports — never at module scope (see module docstring).
         from picamera2 import Picamera2
-        from picamera2.encoders import MJPEGEncoder
+        from picamera2.encoders import JpegEncoder
         from picamera2.outputs import FileOutput
 
         self._Picamera2 = Picamera2
-        self._MJPEGEncoder = MJPEGEncoder
+        self._JpegEncoder = JpegEncoder
         self._FileOutput = FileOutput
         self._camera_lock = threading.RLock()
         # MJPEG-encoding the preview is the dominant CPU/heat cost on Pi 5
@@ -895,7 +908,9 @@ class RealCamera(BaseCamera):
         # raw stream is included so DNG (raw) captures are available on demand.
         self._still_config = self._picam2.create_still_configuration(raw={})
 
-        self._encoder = self._MJPEGEncoder()
+        self._encoder = self._JpegEncoder(
+            num_threads=4, q=self.PREVIEW_JPEG_QUALITY
+        )
         self._file_output = self._FileOutput(self._output)
         # Camera runs continuously; the encoder attaches on demand (see
         # __init__'s comment) — never at open, even if viewers were active

@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { CameraPreview } from "@/components/CaptureView";
-import CameraControls from "@/components/camera-controls/CameraControls";
+import CameraControls, {
+  CONTROL_TABS,
+  type ControlTabId,
+} from "@/components/camera-controls/CameraControls";
 import CameraMeta from "@/components/CameraMeta";
 import CaptureGallery from "@/components/CaptureGallery";
 import CameraSettings from "@/components/CameraSettings";
@@ -24,6 +27,9 @@ export default function CameraTabs() {
   useReloadOnRestart();
 
   const [active, setActive] = useState<TabId>("camera");
+  // Exposure/Focus/WB selector; its buttons render under the preview but
+  // control the content panel beside it, so the state is lifted here.
+  const [controlPanel, setControlPanel] = useState<ControlTabId>("exposure");
   // Rule-of-thirds overlay on the live preview; defaults on, persisted locally.
   const [showGrid, setShowGrid] = useStoredBool("showGrid", true);
   // On-screen Capture button; defaults on. Off is for setups relying solely
@@ -38,12 +44,24 @@ export default function CameraTabs() {
       <Tabs tabs={TABS} active={active} onChange={setActive} />
       <div className="flex h-full min-h-0 w-full">
         {active === "camera" ? (
-          <div className="flex h-full w-full gap-4">
-            <div className="flex min-h-0 w-2/3 items-center justify-center">
-              <CameraPreview showGrid={showGrid} />
+          <div className="flex size-full gap-4">
+            <div className="flex min-h-0 w-2/3 flex-col gap-4">
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <CameraPreview showGrid={showGrid} />
+              </div>
+              <div className="shrink-0">
+                <Tabs
+                  tabs={CONTROL_TABS}
+                  active={controlPanel}
+                  onChange={setControlPanel}
+                />
+              </div>
             </div>
             <div className="flex h-full w-1/3">
-              <CameraControls showCaptureButton={showCaptureButton} />
+              <CameraControls
+                panel={controlPanel}
+                showCaptureButton={showCaptureButton}
+              />
             </div>
           </div>
         ) : active === "meta" ? (

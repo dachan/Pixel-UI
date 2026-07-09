@@ -3,26 +3,30 @@
 import { useState } from "react";
 import { capture } from "@/lib/camera-api";
 import { errorMessage } from "@/lib/errors";
-import Tabs from "@/components/_shared/Tabs";
 import Button from "@/components/_shared/Button";
 import ExposureControls from "@/components/camera-controls/ExposureControls";
 import FocusControls from "@/components/camera-controls/FocusControls";
 import WbControls from "@/components/camera-controls/WbControls";
 
-const CONTROL_TABS = [
+// Tab list + active-tab type are shared with CameraTabs, which renders the
+// tab selector itself (under the live preview) while this component renders
+// the selected panel's content (beside the preview) — so the selector lives
+// in a different part of the layout than the content it controls.
+export const CONTROL_TABS = [
   { id: "exposure", label: "Exposure" },
   { id: "focus", label: "Focus" },
   { id: "wb", label: "WB" },
 ] as const;
 
-type ControlTabId = (typeof CONTROL_TABS)[number]["id"];
+export type ControlTabId = (typeof CONTROL_TABS)[number]["id"];
 
 export default function CameraControls({
+  panel,
   showCaptureButton = true,
 }: {
+  panel: ControlTabId;
   showCaptureButton?: boolean;
 }) {
-  const [panel, setPanel] = useState<ControlTabId>("exposure");
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
@@ -40,10 +44,6 @@ export default function CameraControls({
 
   return (
     <section className="flex h-full w-full flex-col gap-4">
-      <div className="shrink-0">
-        <Tabs tabs={CONTROL_TABS} active={panel} onChange={setPanel} />
-      </div>
-
       <div className="min-h-0 flex-1">
         {panel === "exposure" ? (
           <ExposureControls />

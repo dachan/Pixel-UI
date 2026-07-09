@@ -79,6 +79,14 @@ _AF_CONTINUOUS = 2
 _AF_METERING_AUTO = 0
 _AF_METERING_WINDOWS = 1
 
+# libcamera AfRangeEnum values. "Normal" (the hardware default we'd otherwise
+# get by never setting this) trades away the extremes of the lens travel for
+# faster/more stable convergence on typical shots — on this sensor that means
+# continuous AF can under-shoot true infinity on distant scenes. "Full" is a
+# strict superset (searches the complete lens range, including infinity),
+# so there's no downside to always using it.
+_AF_RANGE_FULL = 2
+
 
 def _unrotate_point(x: float, y: float, rotation: int) -> tuple[float, float]:
     """Map a normalized point in the rotated (displayed) frame back to native
@@ -1169,6 +1177,7 @@ class RealCamera(BaseCamera):
                 self._picam2.set_controls({
                     "AfMode": _AF_CONTINUOUS,
                     "AfMetering": _AF_METERING_AUTO,
+                    "AfRange": _AF_RANGE_FULL,
                 })
             else:
                 self._picam2.set_controls({
@@ -1193,6 +1202,7 @@ class RealCamera(BaseCamera):
                 "AfMode": _AF_CONTINUOUS,
                 "AfMetering": _AF_METERING_WINDOWS,
                 "AfWindows": [(wx, wy, ww, wh)],
+                "AfRange": _AF_RANGE_FULL,
             })
 
     def wb_presets_supported(self) -> bool:

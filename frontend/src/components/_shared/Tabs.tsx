@@ -21,10 +21,10 @@ export default function Tabs<T extends string>({
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
-          className={`flex-1 truncate rounded-sm border border-stone-300 bg-stone-100 px-4 py-2 text-sm transition ${
+          className={`flex-1 truncate rounded-sm border border-stone-300 bg-stone-100 px-4 py-2 text-sm font-semibold transition ${
             active === tab.id
-              ? "text-orange-500 shadow-xs"
-              : "button-shadow text-stone-500"
+              ? "switch-active-shadow text-orange-500"
+              : "switch-shadow text-stone-500"
           }`}
         >
           {tab.label}

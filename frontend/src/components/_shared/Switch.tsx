@@ -13,13 +13,13 @@ export default function Switch({
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-7 w-12 shrink-0 transition ${
-        checked ? "bg-blue-600" : "bg-zinc-700"
+      className={`relative h-6 w-11 shrink-0 border-2 border-stone-300 transition ${
+        checked ? "bg-orange-500" : "bg-stone-200"
       }`}
     >
       <span
-        className={`absolute top-1 h-5 w-5 bg-white transition-all ${
-          checked ? "left-6" : "left-1"
+        className={`absolute top-0 h-5 w-5 bg-white transition-all ${
+          checked ? "left-6" : "left-0"
         }`}
       />
     </button>

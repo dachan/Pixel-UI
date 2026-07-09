@@ -8,9 +8,31 @@ import {
   getFocus,
   focusAtPoint,
 } from "@/lib/camera-api";
+import { useElementSize } from "@/lib/use-element-size";
 
 const FLASH_MS = 600;
 const FOCUS_RING_MS = 900;
+
+// The streamed frame is always 1280x720 (16:9), rotated server-side to
+// 9:16 at 90/270. Kept in sync with RealCamera/MockCamera WIDTH/HEIGHT.
+const STREAM_ASPECT = 16 / 9;
+
+// Largest {width, height} (px) that fits inside `container` at `aspect`
+// (width/height), so the viewfinder box exactly matches the displayed
+// image with no letterboxing or leftover space in either axis.
+function fitToAspect(
+  container: { width: number; height: number },
+  aspect: number,
+): { width: number; height: number } {
+  if (container.width <= 0 || container.height <= 0) {
+    return { width: 0, height: 0 };
+  }
+  const widthAtFullHeight = container.height * aspect;
+  if (widthAtFullHeight <= container.width) {
+    return { width: widthAtFullHeight, height: container.height };
+  }
+  return { width: container.width, height: container.width / aspect };
+}
 
 type CaptureSession = {
   flashDone: boolean;
@@ -18,6 +40,8 @@ type CaptureSession = {
 };
 
 export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
+  const { ref: containerRef, size: containerSize } =
+    useElementSize<HTMLDivElement>();
   const imgRef = useRef<HTMLImageElement>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
   const [frozen, setFrozen] = useState<string | null>(null);
@@ -122,63 +146,72 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
   const streamSrc =
     previewKey > 0 ? `${previewUrl()}?v=${previewKey}` : previewUrl();
 
-  // At 90/270 the frame is portrait: switch the box to 9:16 and size by height
-  // so it uses as much vertical space as possible; otherwise fill width at 16:9.
+  // At 90/270 the stream is rotated server-side to portrait. The box is
+  // sized in exact pixels to fit the measured container at that aspect —
+  // not a static w-full/h-full guess — so its edges always match the
+  // displayed image with no letterboxing or leftover space.
   const portrait = rotation === 90 || rotation === 270;
-  const boxClass = portrait
-    ? "aspect-[9/16] h-full max-w-full"
-    : "aspect-video w-full max-h-full";
+  const aspect = portrait ? 1 / STREAM_ASPECT : STREAM_ASPECT;
+  const box = fitToAspect(containerSize, aspect);
 
   return (
     <div
-      onClick={onTapToFocus}
-      className={`relative overflow-hidden rounded-xl border-4 border-stone-50 bg-black shadow-[0_0_15px_rgba(0,0,0,0.5)] ${boxClass} ${
-        focusAvailable ? "cursor-crosshair" : ""
-      }`}
+      ref={containerRef}
+      className="flex size-full items-center justify-center"
     >
-      <img
-        ref={imgRef}
-        src={streamSrc}
-        alt="Live camera preview"
-        className="h-full w-full object-contain"
-        width={100}
-        height={100}
-      />
-      {frozen && (
+      <div
+        onClick={onTapToFocus}
+        style={box.width > 0 ? { width: box.width, height: box.height } : undefined}
+        className={`relative overflow-hidden rounded-xl border-4 border-stone-50 bg-black shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
+          focusAvailable ? "cursor-crosshair" : ""
+        }`}
+      >
         <img
-          src={frozen}
-          alt=""
-          aria-hidden
-          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          ref={imgRef}
+          src={streamSrc}
+          alt="Live camera preview"
+          className="h-full w-full object-contain"
+          width={100}
+          height={100}
         />
-      )}
-      {showGrid && (
-        <div aria-hidden className="pointer-events-none absolute inset-0">
-          <div className="absolute inset-y-0 left-1/3 w-px bg-white/40" />
-          <div className="absolute inset-y-0 left-2/3 w-px bg-white/40" />
-          <div className="absolute inset-x-0 top-1/3 h-px bg-white/40" />
-          <div className="absolute inset-x-0 top-2/3 h-px bg-white/40" />
-        </div>
-      )}
-      {focusRing && (
-        <div
-          key={focusRing.key}
-          aria-hidden
-          className="pointer-events-none absolute h-16 w-16 rounded-lg border-2 border-yellow-400"
-          style={{
-            left: `${focusRing.x * 100}%`,
-            top: `${focusRing.y * 100}%`,
-            animation: `focus-ring ${FOCUS_RING_MS}ms ease-out forwards`,
-          }}
-        />
-      )}
-      {flashing && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-white"
-          style={{ animation: `camera-flash ${FLASH_MS}ms ease-out forwards` }}
-        />
-      )}
+        {frozen && (
+          <img
+            src={frozen}
+            alt=""
+            aria-hidden
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+          />
+        )}
+        {showGrid && (
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-y-0 left-1/3 w-px bg-white/40" />
+            <div className="absolute inset-y-0 left-2/3 w-px bg-white/40" />
+            <div className="absolute inset-x-0 top-1/3 h-px bg-white/40" />
+            <div className="absolute inset-x-0 top-2/3 h-px bg-white/40" />
+          </div>
+        )}
+        {focusRing && (
+          <div
+            key={focusRing.key}
+            aria-hidden
+            className="pointer-events-none absolute h-16 w-16 rounded-lg border-2 border-yellow-400"
+            style={{
+              left: `${focusRing.x * 100}%`,
+              top: `${focusRing.y * 100}%`,
+              animation: `focus-ring ${FOCUS_RING_MS}ms ease-out forwards`,
+            }}
+          />
+        )}
+        {flashing && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-white"
+            style={{
+              animation: `camera-flash ${FLASH_MS}ms ease-out forwards`,
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }

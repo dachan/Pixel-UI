@@ -33,11 +33,45 @@ CHECK_INTERVAL_S = 10.0
 I2C_SLAVE = 0x0703
 X1201_I2C_BUS = "/dev/i2c-1"
 X1201_FUEL_GAUGE_ADDR = 0x36
-X1201_CAPACITY_REG = 0x04
 X1201_VCELL_REG = 0x02
 # VCELL LSB in volts (MAX1704x: 78.125 µV). Works for both MAX17040 and
 # MAX17048 — the /16 vs ×16 scale difference cancels to the same value.
 X1201_VCELL_LSB_V = 78.125e-6
+
+# Single-cell Li-ion/LiPo open-circuit-voltage -> state-of-charge, the
+# standard reference curve used when a fuel gauge's own model can't be
+# trusted (ascending by voltage; reflects the real discharge shape — flat
+# through the ~40-90% midrange, steep at both ends — unlike a straight
+# line). This specific X1201 gauge is a MAX17040/41-class chip with a
+# fixed, non-programmable internal model that reads implausibly low for
+# this battery (confirmed via a QuickStart reset: no change), so voltage
+# through this curve is used instead of its SOC register.
+_OCV_CURVE_V_PCT: tuple[tuple[float, int], ...] = (
+    (3.27, 0), (3.61, 5), (3.69, 10), (3.71, 15), (3.73, 20),
+    (3.75, 25), (3.77, 30), (3.79, 35), (3.80, 40), (3.82, 45),
+    (3.84, 50), (3.85, 55), (3.87, 60), (3.91, 65), (3.95, 70),
+    (3.98, 75), (4.02, 80), (4.08, 85), (4.11, 90), (4.15, 95),
+    (4.20, 100),
+)
+
+
+def _voltage_to_percent(volts: float) -> int:
+    """Map a cell voltage to 0..100% via piecewise-linear interpolation over
+    _OCV_CURVE_V_PCT, clamped at the table's ends.
+
+    Like any voltage-only estimate, this still sags under heavy load —
+    there's no current-sense hardware here to correct for that.
+    """
+    points = _OCV_CURVE_V_PCT
+    if volts <= points[0][0]:
+        return points[0][1]
+    if volts >= points[-1][0]:
+        return points[-1][1]
+    for (v0, p0), (v1, p1) in zip(points, points[1:]):
+        if volts <= v1:
+            frac = (volts - v0) / (v1 - v0)
+            return round(p0 + frac * (p1 - p0))
+    return points[-1][1]  # unreachable (volts < points[-1][0] handled above)
 
 # Charging detection. This fuel gauge exposes no charge flag (its CRATE
 # register is unimplemented), so charging is inferred from the cell-voltage
@@ -147,27 +181,19 @@ def _read_x1201_voltage() -> float | None:
 
 
 def _read_x1201_battery_level() -> int | None:
-    """Battery % from the X1201 fuel gauge's ModelGauge SOC register (0x04).
+    """Battery % from the X1201 cell voltage, via the standard Li-ion OCV
+    curve (_OCV_CURVE_V_PCT) rather than the gauge's own SOC register.
 
-    This is the most accurate reading the hardware offers: SOC compensates for
-    the nonlinear discharge curve, load sag, and charge-voltage elevation that
-    fool any voltage-only estimate (e.g. at 4.17 V mid-charge the cell reads
-    ~97% by voltage but is really ~79% full — SOC gets this right). It does
-    NOT match the board's cruder voltage-based LED bars. None if absent.
+    Verified on hardware that the chip's SOC can't be trusted for this
+    battery: a QuickStart reset (which forces an immediate OCV-based
+    recalculation) changed nothing, and it read ~0% while the Pi kept
+    running normally — internally consistent, but not reflecting real
+    remaining capacity. None if the UPS isn't present.
     """
-    try:
-        import fcntl
-
-        with open(X1201_I2C_BUS, "r+b", buffering=0) as bus:
-            fcntl.ioctl(bus, I2C_SLAVE, X1201_FUEL_GAUGE_ADDR)
-            bus.write(bytes([X1201_CAPACITY_REG]))
-            data = bus.read(2)
-    except OSError:
+    volts = _read_x1201_voltage()
+    if volts is None:
         return None
-    if len(data) != 2:
-        return None
-    # SOC is an 8.8 fixed-point percentage, big-endian.
-    return max(0, min(100, round(((data[0] << 8) | data[1]) / 256.0)))
+    return _voltage_to_percent(volts)
 
 
 def _cpu_freq_bounds() -> tuple[int, int] | None:

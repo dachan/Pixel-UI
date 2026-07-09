@@ -8,16 +8,25 @@ import {
   type WhiteBalanceState,
 } from "@/lib/camera-api";
 import { usePolling } from "@/lib/use-polling";
+import Tabs from "@/components/_shared/Tabs";
 
+// Same Auto/Manual tab pair as Exposure and Focus, so all three panels look
+// consistent — Auto and Manual always sit beside each other, never mixed in
+// with the preset buttons below.
+const MODE_TABS = [
+  { id: "auto", label: "Auto" },
+  { id: "manual", label: "Manual" },
+] as const;
+
+// AWB presets, shown as buttons under the Auto/Manual tabs — each is a
+// variant of "auto" (still AWB-driven, not manual gains).
 const PRESETS: { value: WhiteBalanceMode; label: string }[] = [
-  { value: "auto", label: "Auto" },
   { value: "incandescent", label: "Incandescent" },
   { value: "tungsten", label: "Tungsten" },
   { value: "fluorescent", label: "Fluorescent" },
   { value: "indoor", label: "Indoor" },
   { value: "daylight", label: "Daylight" },
   { value: "cloudy", label: "Cloudy" },
-  { value: "manual", label: "Manual" },
 ];
 
 const TEMP_FACTOR = 2.0;
@@ -97,32 +106,37 @@ export default function WbControls() {
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto">
-      <div className="grid shrink-0 grid-cols-2 gap-2">
-        {(wb.presets_supported
-          ? PRESETS
-          : PRESETS.filter((p) => ["auto", "manual"].includes(p.value))
-        ).map((preset) => {
-          const active = wb.mode === preset.value;
-          return (
-            <button
-              key={preset.value}
-              type="button"
-              onClick={() =>
-                preset.value === "manual"
-                  ? enterManualWb()
-                  : applyWb({ mode: preset.value })
-              }
-              className={`rounded-xl border p-2.5 text-xs font-bold transition ${
-                active
-                  ? "border-orange-500 bg-orange-500 text-white"
-                  : "border-orange-300 text-orange-500 hover:border-gray-500 hover:text-white"
-              }`}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
+      <div className="flex shrink-0 items-center justify-center">
+        <Tabs
+          tabs={MODE_TABS}
+          active={wb.mode === "manual" ? "manual" : "auto"}
+          onChange={(id) =>
+            id === "manual" ? enterManualWb() : applyWb({ mode: "auto" })
+          }
+        />
       </div>
+
+      {wb.presets_supported && wb.mode !== "manual" && (
+        <div className="grid shrink-0 grid-cols-2 gap-2">
+          {PRESETS.map((preset) => {
+            const active = wb.mode === preset.value;
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => applyWb({ mode: preset.value })}
+                className={`rounded-xl border p-2.5 text-xs font-bold transition ${
+                  active
+                    ? "border-orange-500 bg-orange-500 text-white"
+                    : "border-orange-300 text-orange-500 hover:border-gray-500 hover:text-white"
+                }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {!wb.presets_supported && (
         <p className="shrink-0 text-center text-xs text-gray-500">

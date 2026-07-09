@@ -267,16 +267,25 @@ class ThermalMonitor:
         volts = read_battery_voltage()
         if volts is None:
             return
-        self._update_battery_extremes(volts)
-        self._update_charging(volts)
+        self._update_charging(volts)  # resolves self.charging first
+        # Min/max should reflect the battery's own state, not the charger:
+        # while charging, voltage is being actively driven up by the
+        # charger's output rather than reflecting the cell's own remaining
+        # capacity, which would make "highest ever" a measure of the
+        # charger, not the battery. Skipped only when charging is confirmed
+        # True — an unresolved/unknown state (None, e.g. briefly after a
+        # restart) still gets logged so a real reading isn't dropped.
+        if self.charging is not True:
+            self._update_battery_extremes(volts)
 
     def _update_battery_extremes(self, volts: float) -> None:
-        """Track the lowest/highest cell voltage ever observed, persisted to
-        disk so it survives a service restart (deploys restart it often,
-        which would otherwise lose a low reading taken mid-session) — the
-        real range a single instantaneous reading can't show, e.g. whether
-        the cell ever recovers to a healthy voltage or just sits low
-        (suggesting a genuinely depleted or failing battery)."""
+        """Track the lowest/highest cell voltage ever observed while NOT
+        charging, persisted to disk so it survives a service restart
+        (deploys restart it often, which would otherwise lose a low reading
+        taken mid-session) — the real range a single instantaneous reading
+        can't show, e.g. whether the cell ever recovers to a healthy resting
+        voltage or just sits low (suggesting a genuinely depleted or failing
+        battery)."""
         now = time.time()
         changed = self.battery_first_at is None
         self.battery_first_at = self.battery_first_at or now

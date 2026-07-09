@@ -17,10 +17,9 @@ import {
   exitKiosk,
   type CameraTuning,
   type CaptureFormatValue,
-  type SystemThermal,
 } from "@/lib/camera-api";
 import { errorMessage } from "@/lib/errors";
-import { usePolling } from "@/lib/use-polling";
+import { useThermal, useSetThermal } from "@/lib/thermal-context";
 import DragScrollArea from "@/components/DragScrollArea";
 import SettingToggle from "@/components/SettingToggle";
 
@@ -65,7 +64,9 @@ export default function CameraSettings({
   const [format, setFormat] = useState<CaptureFormatValue | null>(null);
   const [tuning, setTuning] = useState<CameraTuning | null>(null);
   const [tuningBusy, setTuningBusy] = useState(false);
-  const [thermal, setThermal] = useState<SystemThermal | null>(null);
+  // Shared with StatusRow via context — one poll for both, not two.
+  const thermal = useThermal();
+  const setThermal = useSetThermal();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,12 +83,6 @@ export default function CameraSettings({
       .then(setTuning)
       .catch((e) => setError(errorMessage(e)));
   }, []);
-
-  usePolling(() => {
-    systemTemperature()
-      .then(setThermal)
-      .catch(() => setThermal(null));
-  }, 2000);
 
   function apply(rot: number) {
     setRotation(rot); // optimistic

@@ -65,7 +65,7 @@ export default function WbControls() {
         .then(adoptWb)
         .catch(() => {});
     },
-    1000,
+    1500,
     wb !== null && wb.mode !== "manual",
   );
 
@@ -125,7 +125,7 @@ export default function WbControls() {
                 key={preset.value}
                 type="button"
                 onClick={() => applyWb({ mode: preset.value })}
-                className={`rounded-xl border p-2.5 text-xs font-bold transition ${
+                className={`rounded-xl border p-2.5 text-xs font-semibold transition ${
                   active
                     ? "border-orange-500 bg-orange-500 text-white"
                     : "border-orange-300 text-orange-500 hover:border-gray-500 hover:text-white"
@@ -163,7 +163,7 @@ export default function WbControls() {
             ] as const
           ).map(({ key, label, gradient }) => (
             <label key={key} className="flex items-center gap-3">
-              <span className="w-8 text-xs font-bold text-gray-500">
+              <span className="w-8 text-xs font-semibold text-gray-500">
                 {label}
               </span>
               <input

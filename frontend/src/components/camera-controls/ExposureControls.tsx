@@ -53,13 +53,17 @@ export default function ExposureControls() {
       .catch(() => {});
   }, []);
 
+  // Was 500ms — journal showed this as the single largest source of
+  // continuous backend traffic (~1.2 req/s while auto+visible, every one
+  // doing a full capture_metadata() + JSON serialization). Exposure numbers
+  // don't need to feel that instantaneous; 1200ms is still smooth.
   usePolling(
     () => {
       getControls()
         .then(setState)
         .catch(() => {});
     },
-    500,
+    1200,
     state.auto_exposure,
   );
 

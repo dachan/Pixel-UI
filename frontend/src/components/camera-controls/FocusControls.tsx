@@ -28,7 +28,7 @@ export default function FocusControls() {
         .then(setFocusState)
         .catch(() => {});
     },
-    1000,
+    1500,
   );
 
   function applyFocus(patch: {

@@ -77,9 +77,13 @@ def _voltage_to_percent(volts: float) -> int:
 # register is unimplemented), so charging is inferred from the cell-voltage
 # trend: a rise over the window means the charger is pushing current in; a
 # fall means the Pi is running the battery down. A flat, near-full voltage is
-# the charger holding the cell topped up (CV phase).
+# the charger holding the cell topped up (CV phase). The trend compares
+# averaged early-vs-late halves of the sample window (not two raw endpoint
+# readings) — VCELL is noisy enough under the Pi's variable load that a
+# single-sample comparison read a false "charging" from ~10mV of jitter with
+# no charger connected at all.
 CHARGE_WINDOW_S = 90
-CHARGE_RISE_V = 0.01
+CHARGE_RISE_V = 0.03
 # Flat voltage held at/above this means the charger is present: under the Pi's
 # constant load a battery on battery power sags and steadily declines, so it
 # can't hold a high voltage flat. Set below the ~4.1 V charge plateau so the
@@ -257,7 +261,15 @@ class ThermalMonitor:
         self._volts.append((now, volts))
         while self._volts and now - self._volts[0][0] > CHARGE_WINDOW_S:
             self._volts.popleft()
-        delta = volts - self._volts[0][1]
+        if len(self._volts) < 4:
+            return  # not enough samples yet for a de-noised trend
+        # Compare averaged early-vs-late halves rather than two raw samples,
+        # so a single noisy reading can't flip the state (see CHARGE_RISE_V).
+        samples = list(self._volts)
+        mid = len(samples) // 2
+        early = sum(v for _, v in samples[:mid]) / mid
+        late = sum(v for _, v in samples[mid:]) / (len(samples) - mid)
+        delta = late - early
         if delta >= CHARGE_RISE_V:
             self.charging = True
         elif delta <= -CHARGE_RISE_V:

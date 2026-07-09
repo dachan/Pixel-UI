@@ -75,6 +75,19 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
     key: number;
   } | null>(null);
 
+  // Explicitly abort the in-flight MJPEG stream request on unmount. Removing
+  // an <img> from the DOM does not reliably cancel its underlying network
+  // request for a multipart/x-mixed-replace stream (confirmed: the backend
+  // connection stayed ESTABLISHED after switching tabs away from Camera) —
+  // clearing src is the standard way to force the browser to abort it. This
+  // is what lets the backend detach its MJPEG encoder (the dominant CPU/heat
+  // cost) the moment nobody's actually viewing the preview.
+  useEffect(() => {
+    return () => {
+      if (imgRef.current) imgRef.current.src = "";
+    };
+  }, []);
+
   useEffect(() => {
     getOrientation()
       .then((o) => setRotation(o.rotation))
@@ -170,10 +183,7 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
   const box = fitFrameToAspect(containerSize, aspect);
 
   return (
-    <div
-      ref={containerRef}
-      className="flex size-full items-center justify-center"
-    >
+    <div ref={containerRef} className="flex items-start justify-start">
       <div
         onClick={onTapToFocus}
         style={

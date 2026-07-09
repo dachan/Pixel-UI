@@ -175,6 +175,12 @@ class BaseCamera(abc.ABC):
     # the non-NoIR variant, whose colour-temperature AWB makes WB presets
     # meaningful on a NoIR sensor (only offered there — see tuning_available).
     TUNINGS = ("default", "standard")
+    # Live-preview framerate cap. The Pi 5 has no hardware video encoder, so
+    # MJPEG-encoding the preview is pure CPU work that scales with fps — 24fps
+    # is smooth enough for a viewfinder while capping that cost; dropped
+    # further to PREVIEW_FPS_THROTTLED while thermally throttled.
+    PREVIEW_FPS_NORMAL = 24
+    PREVIEW_FPS_THROTTLED = 15
 
     def __init__(self):
         # Rotation (degrees clockwise) applied to captured stills.
@@ -191,10 +197,14 @@ class BaseCamera(abc.ABC):
         self._wb = {"mode": "auto", "red_gain": 2.0, "blue_gain": 2.0}
         # Colour tuning (one of TUNINGS); real cameras load it at open time.
         self._tuning = "default"
-        # Whether the thermal monitor may throttle the CPU at all (user
-        # setting). The throttle action itself is a CPU-frequency cap in
-        # thermal.py — the camera is not involved.
+        # Whether the thermal monitor may throttle at all (user setting).
+        # The throttle itself is a CPU-frequency cap (thermal.py) plus a
+        # preview-framerate cap (set_preview_throttled below).
         self._throttle_enabled = True
+        # Current preview-framerate-throttle state, so it can be re-applied
+        # after anything that rebuilds the camera pipeline (e.g. a tuning
+        # switch). No-op on cameras that don't override set_preview_throttled.
+        self._preview_throttled = False
         # Settings persistence (see settings_store.py).
         self._store = SettingsStore()
         # Suppress saving while restoring (applying loaded values back).
@@ -386,19 +396,26 @@ class BaseCamera(abc.ABC):
         self._save_settings()
         return self.get_white_balance()
 
-    # --- Thermal throttling (on/off preference; action lives in thermal.py) --- #
+    # --- Thermal throttling ------------------------------------------------------ #
+    # on/off preference here; the CPU-frequency cap lives in thermal.py, the
+    # preview-framerate cap below — the ThermalMonitor (camera_service) drives
+    # both together.
 
     def get_throttle_enabled(self) -> bool:
         return self._throttle_enabled
 
     def set_throttle_enabled(self, enabled) -> None:
-        """Persist the user's thermal-throttling on/off choice.
-
-        The ThermalMonitor (camera_service) is what acts on it; this just
-        holds and persists the preference alongside the camera settings.
-        """
+        """Persist the user's thermal-throttling on/off choice."""
         self._throttle_enabled = bool(enabled)
         self._save_settings()
+
+    def set_preview_throttled(self, throttled: bool) -> None:
+        """Cap (or restore) the live preview framerate for thermal management.
+
+        No-op unless overridden — the mock stream has no real encode cost to
+        manage, so it just remembers the state for consistency.
+        """
+        self._preview_throttled = bool(throttled)
 
     # --- Colour tuning ---------------------------------------------------------- #
 
@@ -846,6 +863,8 @@ class RealCamera(BaseCamera):
             if saved.get("tuning") == "standard" and self.tuning_available():
                 self._tuning = "standard"
                 self._apply_tuning()
+
+            self.set_preview_throttled(False)  # establish the PREVIEW_FPS_NORMAL cap
         finally:
             self._restoring = False
 
@@ -915,8 +934,24 @@ class RealCamera(BaseCamera):
                         self._apply_focus_point(*self._af_point)
                     else:
                         self._apply_focus()
+                self.set_preview_throttled(self._preview_throttled)
             finally:
                 self._restoring = was_restoring
+
+    def set_preview_throttled(self, throttled: bool) -> None:
+        """Cap the live preview to PREVIEW_FPS_THROTTLED (or restore
+        PREVIEW_FPS_NORMAL), by fixing the main stream's frame duration.
+
+        min == max forces an exact rate rather than just an upper bound —
+        deliberate, since this is the preview stream only (stills capture
+        via a separate still_config), so pinning exposure headroom here
+        doesn't affect capture quality.
+        """
+        self._preview_throttled = bool(throttled)
+        fps = self.PREVIEW_FPS_THROTTLED if throttled else self.PREVIEW_FPS_NORMAL
+        us = round(1_000_000 / fps)
+        with self._camera_lock:
+            self._picam2.set_controls({"FrameDurationLimits": (us, us)})
 
     def _full_fov_raw_stream(self):
         """Raw-stream spec that keeps the preview at the sensor's full FoV.

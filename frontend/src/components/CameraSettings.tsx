@@ -173,13 +173,21 @@ export default function CameraSettings({
         {thermal?.battery_volts !== null &&
           thermal?.battery_volts !== undefined && (
             <section className="flex flex-col gap-2 text-stone-500">
-              <div className="flex flex-col gap-1">
-                <h2 className="text-sm font-bold">Battery</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold">Battery</h2>
+                <button
+                  type="button"
+                  onClick={onResetBatteryLog}
+                  disabled={resettingLog}
+                  className="text-xs font-semibold text-red-500 transition disabled:opacity-50"
+                >
+                  {resettingLog ? "Resetting…" : "Reset log"}
+                </button>
               </div>
-              <div className="flex flex-col gap-1 p-3 text-sm">
+              <div className="flex flex-col gap-1 text-sm">
                 <div className="flex justify-between">
                   <span className="">Now</span>
-                  <span className="font-mono font-bold">
+                  <span className="font-mono font-semibold">
                     {thermal.battery_volts.toFixed(2)}V ({thermal.battery_level}
                     %)
                   </span>
@@ -201,14 +209,6 @@ export default function CameraSettings({
                   </span>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={onResetBatteryLog}
-                disabled={resettingLog}
-                className="self-start border border-gray-300 px-3 py-1.5 text-xs font-bold text-stone-400 transition hover:border-stone-500 hover:text-white disabled:opacity-50"
-              >
-                {resettingLog ? "Resetting…" : "Reset log"}
-              </button>
             </section>
           )}
 
@@ -216,16 +216,17 @@ export default function CameraSettings({
           <section className="flex flex-col gap-2">
             <SettingToggle
               title="Thermal throttling"
-              description={`Cap the CPU to 1.5 GHz when it passes ${Math.round(
+              description={`Cap the CPU to 1.5 GHz and the live preview to 15fps when it passes ${Math.round(
                 thermal.throttle_at,
               )} °C, to keep the Pi cool. Slows captures and the UI while active.`}
               checked={thermal.throttle_enabled}
               onChange={applyThrottleEnabled}
             />
             {thermal.throttled && (
-              <p className="text-sm font-bold text-amber-400">
-                Thermal throttling active — CPU capped at 1.5 GHz until the Pi
-                cools below {Math.round(thermal.throttle_at - 5)} °C.
+              <p className="text-sm font-semibold text-amber-400">
+                Thermal throttling active — CPU capped at 1.5 GHz and preview
+                at 15fps until the Pi cools below{" "}
+                {Math.round(thermal.throttle_at - 5)} °C.
               </p>
             )}
           </section>
@@ -247,7 +248,7 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-bold text-stone-500">
+            <h2 className="text-sm font-semibold text-stone-500">
               Sensor rotation
             </h2>
             <p className="text-sm text-stone-500">
@@ -269,7 +270,7 @@ export default function CameraSettings({
                     type="button"
                     onClick={() => apply(rot)}
                     disabled={rotation === null}
-                    className={`border p-4 text-sm font-bold transition disabled:opacity-50 ${
+                    className={`border p-4 text-sm font-semibold transition disabled:opacity-50 ${
                       active
                         ? "border-blue-500 bg-blue-600 text-white"
                         : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
@@ -285,7 +286,7 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-bold text-stone-500">
+            <h2 className="text-sm font-semibold text-stone-500">
               Capture quality
             </h2>
             <p className="text-sm text-stone-500">
@@ -320,7 +321,9 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-bold text-stone-500">Capture format</h2>
+            <h2 className="text-sm font-semibold text-stone-500">
+              Capture format
+            </h2>
             <p className="text-sm text-stone-500">
               RAW saves an unprocessed .dng for editing. Browsers can&apos;t
               preview DNG, so RAW-only photos won&apos;t appear in the Gallery.
@@ -344,7 +347,7 @@ export default function CameraSettings({
                         : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
                     }`}
                   >
-                    <span className="text-sm font-bold">{f.label}</span>
+                    <span className="text-sm font-semibold">{f.label}</span>
                     <span
                       className={`text-xs ${
                         active ? "text-blue-100" : "text-stone-500"
@@ -362,7 +365,7 @@ export default function CameraSettings({
         {tuning?.available && (
           <section className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <h2 className="text-sm font-bold text-stone-500">
+              <h2 className="text-sm font-semibold text-stone-500">
                 Colour tuning
               </h2>
               <p className="text-sm text-stone-500">
@@ -398,7 +401,9 @@ export default function CameraSettings({
                         : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
                     }`}
                   >
-                    <span className="text-sm font-bold">{option.label}</span>
+                    <span className="text-sm font-semibold">
+                      {option.label}
+                    </span>
                     <span
                       className={`text-xs ${
                         active ? "text-blue-100" : "text-stone-500"
@@ -420,7 +425,7 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-bold text-stone-500">
+            <h2 className="text-sm font-semibold text-stone-500">
               Delete all photos
             </h2>
             <p className="text-sm text-stone-500">
@@ -431,7 +436,7 @@ export default function CameraSettings({
           <button
             type="button"
             onClick={onDeleteAllClick}
-            className={`border p-4 text-sm font-bold transition ${
+            className={`border p-4 text-sm font-semibold transition ${
               confirmingDelete
                 ? "border-red-500 bg-red-500 text-white"
                 : "border-red-500 text-red-500 hover:border-red-600 hover:text-white"
@@ -448,7 +453,7 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-bold text-stone-500">Exit kiosk</h2>
+            <h2 className="text-sm font-semibold text-stone-500">Exit kiosk</h2>
             <p className="text-sm text-stone-500">
               Reboot into the Pi desktop for one session. The next reboot
               returns to kiosk mode.
@@ -457,7 +462,7 @@ export default function CameraSettings({
           <button
             type="button"
             onClick={onExitClick}
-            className={`border p-4 text-sm font-bold transition ${
+            className={`border p-4 text-sm font-semibold transition ${
               confirmingExit
                 ? "border-red-500 bg-red-500 text-white"
                 : "border-red-500 text-red-500 hover:border-red-600 hover:text-white"

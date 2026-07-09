@@ -28,15 +28,30 @@ camera = get_camera()
 # "start"/"done" is published here around every capture, from any trigger.
 capture_events = SseBroadcaster()
 
-# App-level thermal protection: cap the CPU frequency when it runs hot,
-# restore when it cools (thresholds in thermal.py). The user can turn it off
-# in Settings; the choice persists with the camera settings (restored by
-# get_camera() above, hence read after it). Establish a clean baseline
-# (uncapped) at startup in case a prior crash left the CPU pinned low.
+# App-level thermal protection: cap the CPU frequency AND the live-preview
+# framerate when it runs hot, restore both when it cools (thresholds in
+# thermal.py; preview fps caps are on the camera — see PREVIEW_FPS_* in
+# camera.py). The user can turn it off in Settings; the choice persists with
+# the camera settings (restored by get_camera() above, hence read after it).
+# Establish a clean CPU baseline (uncapped) at startup in case a prior crash
+# left it pinned low — the camera's own preview fps cap is applied when it
+# opens, so no equivalent reset is needed here.
+
+
+def _on_throttle():
+    set_cpu_throttled(True)
+    camera.set_preview_throttled(True)
+
+
+def _on_resume():
+    set_cpu_throttled(False)
+    camera.set_preview_throttled(False)
+
+
 set_cpu_throttled(False)
 thermal = ThermalMonitor(
-    on_throttle=lambda: set_cpu_throttled(True),
-    on_resume=lambda: set_cpu_throttled(False),
+    on_throttle=_on_throttle,
+    on_resume=_on_resume,
     enabled=camera.get_throttle_enabled(),
 )
 

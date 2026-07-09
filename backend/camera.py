@@ -830,6 +830,16 @@ class RealCamera(BaseCamera):
         self._MJPEGEncoder = MJPEGEncoder
         self._FileOutput = FileOutput
         self._camera_lock = threading.RLock()
+        # MJPEG-encoding the preview is the dominant CPU/heat cost on Pi 5
+        # (no hardware video encoder — measured ~43% of a core with it
+        # attached vs. ~5% with just the raw camera running), so the encoder
+        # is only attached while someone is actually watching. _open_camera
+        # always starts the raw camera (needed continuously for metadata,
+        # AE/AWB/AF convergence, and instant physical-shutter captures);
+        # stream() attaches/detaches it via these two, reference-counted so
+        # multiple simultaneous viewers don't fight over it.
+        self._preview_viewers = 0
+        self._encoder_attached = False
         # One StreamingOutput for the process lifetime: preview generators
         # hold a reference to it, so tuning rebuilds swap the camera/encoder
         # underneath without breaking connected streams.
@@ -887,7 +897,11 @@ class RealCamera(BaseCamera):
 
         self._encoder = self._MJPEGEncoder()
         self._file_output = self._FileOutput(self._output)
-        self._picam2.start_recording(self._encoder, self._file_output)
+        # Camera runs continuously; the encoder attaches on demand (see
+        # __init__'s comment) — never at open, even if viewers were active
+        # before a rebuild (_apply_tuning re-attaches explicitly afterward).
+        self._picam2.start()
+        self._encoder_attached = False
 
     def _load_tuning(self):
         """Tuning dict for the current self._tuning choice, or None (default).
@@ -919,8 +933,11 @@ class RealCamera(BaseCamera):
         # The tuning file is baked in at open time, so rebuild the pipeline,
         # then re-apply the software-held state to the fresh camera.
         with self._camera_lock:
-            self._picam2.stop_recording()
+            if self._encoder_attached:
+                self._picam2.stop_encoder(self._encoder)
+            self._picam2.stop()
             self._picam2.close()
+            had_viewers = self._preview_viewers > 0
             self._open_camera()
             was_restoring = self._restoring
             self._restoring = True
@@ -935,6 +952,11 @@ class RealCamera(BaseCamera):
                     else:
                         self._apply_focus()
                 self.set_preview_throttled(self._preview_throttled)
+                # Restore the encoder if viewers were watching before the
+                # rebuild — _open_camera() always starts it detached.
+                if had_viewers:
+                    self._picam2.start_encoder(self._encoder, self._file_output)
+                    self._encoder_attached = True
             finally:
                 self._restoring = was_restoring
 
@@ -952,6 +974,26 @@ class RealCamera(BaseCamera):
         us = round(1_000_000 / fps)
         with self._camera_lock:
             self._picam2.set_controls({"FrameDurationLimits": (us, us)})
+
+    def _acquire_preview_encoder(self) -> None:
+        """Attach the MJPEG encoder if this is the first active viewer.
+
+        Reference-counted so N simultaneous viewers (e.g. the kiosk plus a
+        browser on another device) don't fight over attach/detach.
+        """
+        with self._camera_lock:
+            self._preview_viewers += 1
+            if not self._encoder_attached:
+                self._picam2.start_encoder(self._encoder, self._file_output)
+                self._encoder_attached = True
+
+    def _release_preview_encoder(self) -> None:
+        """Detach the encoder once the last viewer disconnects."""
+        with self._camera_lock:
+            self._preview_viewers = max(0, self._preview_viewers - 1)
+            if self._preview_viewers == 0 and self._encoder_attached:
+                self._picam2.stop_encoder(self._encoder)
+                self._encoder_attached = False
 
     def _full_fov_raw_stream(self):
         """Raw-stream spec that keeps the preview at the sensor's full FoV.
@@ -983,24 +1025,38 @@ class RealCamera(BaseCamera):
             return None
 
     def stream(self):
-        while True:
-            with self._output.condition:
-                self._output.condition.wait()
-                frame = self._output.frame
-            if frame is not None:
-                # Rotate to match the configured sensor rotation. At 0° this is
-                # a no-op pass-through (no re-encode), so there is no overhead
-                # unless a rotation is actually selected.
-                yield self._rotate_jpeg(frame)
+        # Encoder attaches for this viewer and detaches again once nobody's
+        # watching (see _acquire/_release_preview_encoder) — the raw camera
+        # itself keeps running throughout, so switching tabs and back is
+        # instant and metadata/AE/AWB/AF elsewhere never sees a gap.
+        self._acquire_preview_encoder()
+        try:
+            while True:
+                with self._output.condition:
+                    self._output.condition.wait()
+                    frame = self._output.frame
+                if frame is not None:
+                    # Rotate to match the configured sensor rotation. At 0°
+                    # this is a no-op pass-through (no re-encode), so there's
+                    # no overhead unless a rotation is actually selected.
+                    yield self._rotate_jpeg(frame)
+        finally:
+            self._release_preview_encoder()
 
     def capture(self, path: str) -> dict:
         save_jpeg, jpeg_path, save_raw, dng_path = self._capture_targets(path)
         files = []
         preview = None
-        # switch_mode_and_capture_request deadlocks if MJPEG recording is still
-        # active — stop the encoder first, capture, then resume the stream.
+        # switch_mode_and_capture_request deadlocks (confirmed: it hands the
+        # still-mode frame to the encoder, which chokes on the resolution
+        # mismatch) if the encoder is still attached — detach it first if it
+        # is, capture, then restore it to whatever state it was in. The raw
+        # camera itself is never stopped, so this is fast either way.
         with self._camera_lock:
-            self._picam2.stop_recording()
+            was_attached = self._encoder_attached
+            if was_attached:
+                self._picam2.stop_encoder(self._encoder)
+                self._encoder_attached = False
             try:
                 request = self._picam2.switch_mode_and_capture_request(
                     self._still_config
@@ -1021,7 +1077,9 @@ class RealCamera(BaseCamera):
                 finally:
                     request.release()
             finally:
-                self._picam2.start_recording(self._encoder, self._file_output)
+                if was_attached:
+                    self._picam2.start_encoder(self._encoder, self._file_output)
+                    self._encoder_attached = True
         return {"files": files, "preview": preview}
 
     def info(self) -> dict:

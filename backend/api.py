@@ -20,6 +20,7 @@ from flask import Blueprint, Response, jsonify, request, send_file
 import thermal as thermal_config
 from camera_service import (
     CAPTURES_DIR,
+    audit_log,
     camera,
     capture_events,
     delete_all_captures,
@@ -101,7 +102,7 @@ def capture_event_stream():
 def list_captures():
     """GET the saved capture filenames (newest first); DELETE removes all."""
     if request.method == "DELETE":
-        return jsonify(deleted=delete_all_captures())
+        return jsonify(deleted=delete_all_captures(source=request.remote_addr))
     os.makedirs(CAPTURES_DIR, exist_ok=True)
     names = [
         f
@@ -302,6 +303,7 @@ def exit_kiosk():
     """
     if os.environ.get("CAMERA") != "real":
         return jsonify(status="noop-off-pi")
+    audit_log("reboot", f"exit-to-desktop, from {request.remote_addr}")
     flag = os.path.join(os.path.expanduser("~"), ".ircam-boot-to-desktop")
     try:
         open(flag, "w").close()

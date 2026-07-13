@@ -39,6 +39,7 @@ rsync -az --delete \
   --exclude 'captures' \
   --exclude 'settings.json' \
   --exclude 'battery_log.json' \
+  --exclude 'actions.log' \
   --exclude '__pycache__' \
   --exclude 'frontend' \
   backend/ "${PI_TARGET}:${PI_DIR}/"

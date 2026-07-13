@@ -8,6 +8,7 @@ behave identically regardless of trigger, and every capture is announced on
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime
 
@@ -15,8 +16,27 @@ from camera import get_camera
 from events import SseBroadcaster
 from thermal import ThermalMonitor, set_cpu_throttled
 
+logger = logging.getLogger(__name__)
+
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 CAPTURES_DIR = os.path.join(BACKEND_DIR, "captures")
+# Append-only audit log for destructive/irreversible actions (delete-all,
+# reboot). Lives next to the backend like settings.json — excluded from
+# deploys and git — so it survives redeploys and journal rotation, unlike
+# the systemd journal (which is what left an earlier data-loss incident
+# undiagnosable). Best-effort: logging must never take an action down.
+AUDIT_LOG_PATH = os.path.join(BACKEND_DIR, "actions.log")
+
+
+def audit_log(action: str, detail: str = "") -> None:
+    """Record an irreversible action to the audit log and the journal."""
+    line = f"{datetime.now().isoformat(timespec='seconds')}  {action}  {detail}".rstrip()
+    logger.warning("AUDIT: %s %s", action, detail)
+    try:
+        with open(AUDIT_LOG_PATH, "a") as f:
+            f.write(line + "\n")
+    except OSError:
+        pass
 # Cached gallery thumbnails, generated on demand. Hidden (dot-dir) so the
 # captures listing never picks it up.
 THUMBS_DIR = os.path.join(CAPTURES_DIR, ".thumbs")
@@ -81,9 +101,10 @@ def thumbnail_for(filename: str) -> str:
     return dst
 
 
-def delete_all_captures() -> int:
+def delete_all_captures(source: str = "") -> int:
     """Delete every capture (JPEG + DNG) and its cached thumbnail.
 
+    ``source`` (e.g. the requester's IP) is recorded in the audit log.
     Returns the number of capture files removed (thumbs not counted).
     """
     deleted = 0
@@ -102,6 +123,10 @@ def delete_all_captures() -> int:
                     deleted += 1
             except OSError:
                 pass  # best-effort; report what actually went
+    detail = f"removed {deleted} capture(s)"
+    if source:
+        detail += f", from {source}"
+    audit_log("delete-all", detail)
     return deleted
 
 

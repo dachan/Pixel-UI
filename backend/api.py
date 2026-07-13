@@ -121,6 +121,17 @@ def stream_page():
     return Response(html, mimetype="text/html")
 
 
+@api.route("/snapshot.jpg")
+def snapshot():
+    """A single JPEG frame from the live preview.
+
+    Still-image URL for tools that poll one frame at a time (Home Assistant
+    "generic camera", OctoPrint snapshot). Unlike /capture it saves nothing
+    and stays at preview resolution — it's a cheap current-frame grab.
+    """
+    return Response(camera.snapshot(), mimetype="image/jpeg")
+
+
 @api.route("/capture", methods=["POST"])
 def capture():
     result = do_capture()

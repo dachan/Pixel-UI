@@ -565,6 +565,22 @@ class BaseCamera(abc.ABC):
         """Yield raw JPEG bytes (one complete frame per iteration)."""
         raise NotImplementedError
 
+    def snapshot(self) -> bytes:
+        """Return one complete JPEG frame from the live preview.
+
+        Reuses ``stream()`` — and thus its viewer accounting, encoder
+        attach/detach, and rotation — but pulls a single fresh frame and
+        stops. Backs /api/snapshot.jpg for tools that poll a still image
+        (Home Assistant "generic camera", OctoPrint) rather than hold an
+        MJPEG connection open. Distinct from ``capture()``, which switches to
+        the full-resolution still mode and writes to disk.
+        """
+        frames = self.stream()
+        try:
+            return next(frames)
+        finally:
+            frames.close()
+
     @abc.abstractmethod
     def capture(self, path: str) -> dict:
         """Capture a still, writing files per the current format.

@@ -8,14 +8,11 @@ import {
   setQuality as saveQuality,
   getFormat,
   setFormat as saveFormat,
-  getTuning,
-  setTuning as saveTuning,
   systemTemperature,
   setThrottleEnabled,
   resetBatteryLog,
   deleteAllCaptures,
   exitKiosk,
-  type CameraTuning,
   type CaptureFormatValue,
 } from "@/lib/camera-api";
 import { errorMessage } from "@/lib/errors";
@@ -62,8 +59,6 @@ export default function CameraSettings({
   const [rotation, setRotation] = useState<number | null>(null);
   const [quality, setQuality] = useState<number | null>(null);
   const [format, setFormat] = useState<CaptureFormatValue | null>(null);
-  const [tuning, setTuning] = useState<CameraTuning | null>(null);
-  const [tuningBusy, setTuningBusy] = useState(false);
   // Shared with StatusRow via context — one poll for both, not two.
   const thermal = useThermal();
   const setThermal = useSetThermal();
@@ -78,9 +73,6 @@ export default function CameraSettings({
       .catch((e) => setError(errorMessage(e)));
     getFormat()
       .then((f) => setFormat(f.format))
-      .catch((e) => setError(errorMessage(e)));
-    getTuning()
-      .then(setTuning)
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
@@ -116,15 +108,6 @@ export default function CameraSettings({
     setThrottleEnabled(enabled).catch((e) => setError(errorMessage(e)));
   }
 
-  function applyTuning(value: "default" | "standard") {
-    setTuning((prev) => (prev ? { ...prev, tuning: value } : prev));
-    setTuningBusy(true);
-    setError(null);
-    saveTuning({ tuning: value })
-      .then(setTuning)
-      .catch((e) => setError(errorMessage(e)))
-      .finally(() => setTuningBusy(false));
-  }
 
   const [resettingLog, setResettingLog] = useState(false);
   function onResetBatteryLog() {
@@ -356,67 +339,6 @@ export default function CameraSettings({
             </div>
           )}
         </section>
-
-        {tuning?.available && (
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-sm font-semibold text-stone-500">
-                Colour tuning
-              </h2>
-              <p className="text-sm text-stone-500">
-                How this NoIR sensor interprets colour. Switching restarts the
-                camera for a few seconds.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  {
-                    value: "default",
-                    label: "NoIR",
-                    hint: "Native greyworld AWB. WB presets disabled.",
-                  },
-                  {
-                    value: "standard",
-                    label: "Standard colour",
-                    hint: "WB presets work — colours assume an IR-cut filter.",
-                  },
-                ] as const
-              ).map((option) => {
-                const active = tuning.tuning === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => applyTuning(option.value)}
-                    disabled={tuningBusy}
-                    className={`flex flex-col gap-1 border p-3 text-left transition disabled:opacity-50 ${
-                      active
-                        ? "border-blue-500 bg-blue-600 text-white"
-                        : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
-                    }`}
-                  >
-                    <span className="text-sm font-semibold">
-                      {option.label}
-                    </span>
-                    <span
-                      className={`text-xs ${
-                        active ? "text-blue-100" : "text-stone-500"
-                      }`}
-                    >
-                      {option.hint}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {tuningBusy && (
-              <p className="text-sm text-stone-500">
-                Switching tuning — restarting the camera…
-              </p>
-            )}
-          </section>
-        )}
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">

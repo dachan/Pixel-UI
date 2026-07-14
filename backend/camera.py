@@ -20,18 +20,8 @@ import math
 import os
 import threading
 import time
-from datetime import datetime
 
 from settings_store import SettingsStore
-
-
-def _shutter_label(us: int) -> str:
-    """Human shutter label, e.g. 10000 -> '1/100s', 500000 -> '0.5s'."""
-    if us <= 0:
-        return "0s"
-    if us >= 1_000_000:
-        return f"{us / 1_000_000:.1f}s"
-    return f"1/{round(1_000_000 / us)}s"
 
 
 def _jsonable(value):
@@ -646,48 +636,68 @@ class BaseCamera(abc.ABC):
 class MockCamera(BaseCamera):
     """Synthesizes JPEG frames with Pillow so the dev stream is visibly live.
 
-    Each frame draws a moving circle (position driven by wall-clock time) plus a
-    live timestamp, so it is obvious the feed is a real stream and not a frozen
-    image.
+    Prefers ``backend/assets/mock_viewfinder.jpg`` (or ``MOCK_VIEWFINDER`` path)
+    as a photographic scene with a slow Ken-Burns crop so the feed is clearly
+    live. Falls back to a dark canvas + moving circle when no scene file exists.
     """
 
     WIDTH = 1280
     HEIGHT = 720
     FPS = 10
 
+    def __init__(self):
+        super().__init__()
+        self._scene = self._load_scene()
+
+    def _load_scene(self):
+        from PIL import Image
+
+        candidates = [
+            os.environ.get("MOCK_VIEWFINDER", ""),
+            os.path.join(os.path.dirname(__file__), "assets", "mock_viewfinder.jpg"),
+        ]
+        for path in candidates:
+            if path and os.path.isfile(path):
+                try:
+                    return Image.open(path).convert("RGB")
+                except OSError:
+                    continue
+        return None
+
+    def _render_scene_base(self):
+        from PIL import Image
+
+        if self._scene is None:
+            return Image.new("RGB", (self.WIDTH, self.HEIGHT), (18, 18, 24))
+
+        # Cover-scale, then a gentle timed pan so the stream isn't a still.
+        src = self._scene
+        scale = max(self.WIDTH / src.width, self.HEIGHT / src.height) * 1.08
+        scaled = src.resize(
+            (max(self.WIDTH, int(src.width * scale)),
+             max(self.HEIGHT, int(src.height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+        t = time.time()
+        max_x = scaled.width - self.WIDTH
+        max_y = scaled.height - self.HEIGHT
+        x0 = int((math.sin(t * 0.15) * 0.5 + 0.5) * max_x) if max_x > 0 else 0
+        y0 = int((math.sin(t * 0.11 + 1.0) * 0.5 + 0.5) * max_y) if max_y > 0 else 0
+        return scaled.crop((x0, y0, x0 + self.WIDTH, y0 + self.HEIGHT))
+
     def _render_frame(self):
         from PIL import Image, ImageDraw
 
-        img = Image.new("RGB", (self.WIDTH, self.HEIGHT), (18, 18, 24))
+        img = self._render_scene_base()
         draw = ImageDraw.Draw(img)
 
-        # Moving circle: travels horizontally on a sine-driven vertical path.
-        t = time.time()
-        x = int((math.sin(t * 0.9) * 0.5 + 0.5) * (self.WIDTH - 120) + 60)
-        y = int((math.sin(t * 1.7) * 0.5 + 0.5) * (self.HEIGHT - 120) + 60)
-        r = 48
-        draw.ellipse((x - r, y - r, x + r, y + r), fill=(80, 200, 255))
-
-        # Live timestamp so a frozen frame is immediately obvious.
-        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        draw.text((20, 20), f"MOCK CAMERA  {stamp}", fill=(240, 240, 240))
-
-        # Overlay current exposure/focus/WB settings so control changes are
-        # visible in the dev stream.
-        st = self.controls_state()
-        mode = "AUTO" if st["auto_exposure"] else "MANUAL"
-        draw.text(
-            (20, 40),
-            f"{mode}  ISO {st['iso']}  {_shutter_label(st['shutter_us'])}",
-            fill=(120, 230, 160),
-        )
-        focus = self.get_focus()
-        draw.text(
-            (20, 60),
-            f"AF {self._focus['af_mode'].upper()} {focus['lens_position']:.2f}"
-            f"  WB {self._wb['mode'].upper()}",
-            fill=(120, 230, 160),
-        )
+        if self._scene is None:
+            # Legacy fallback when no mock scene asset is present.
+            t = time.time()
+            x = int((math.sin(t * 0.9) * 0.5 + 0.5) * (self.WIDTH - 120) + 60)
+            y = int((math.sin(t * 1.7) * 0.5 + 0.5) * (self.HEIGHT - 120) + 60)
+            r = 48
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=(80, 200, 255))
 
         # Tap-to-focus marker: drawn in native coords pre-rotation, so after
         # the stream is rotated it lands exactly where the user tapped.
@@ -699,7 +709,7 @@ class MockCamera(BaseCamera):
                            outline=(255, 210, 80), width=3)
 
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=80)
+        img.save(buf, format="JPEG", quality=85)
         return buf.getvalue()
 
     def tuning_available(self) -> bool:

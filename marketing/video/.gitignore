@@ -1,0 +1,20 @@
+# Rebuild intermediates
+node_modules/
+raw/
+frames/
+stage-frames/
+staged-frames/
+captures/
+assets/
+
+# Generated during compose / QA
+check-*.png
+badge-*.png
+preview-frame.jpg
+title-*.png
+stage-bg.png
+open.mp4
+inter.mp4
+close.mp4
+ui.mp4
+pixel-ui-highlight-raw.webm

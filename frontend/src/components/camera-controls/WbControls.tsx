@@ -66,11 +66,20 @@ export default function WbControls() {
   }
 
   useEffect(() => {
-    getWhiteBalance()
-      .then(adoptWb)
-      .catch(() => {});
-    getTuning()
-      .then(setTuning)
+    Promise.all([getWhiteBalance(), getTuning()])
+      .then(async ([next, nextTuning]) => {
+        setTuning(nextTuning);
+        if (nextTuning.tuning === "default" && next.mode !== "manual") {
+          const manual = await setWhiteBalance({
+            mode: "manual",
+            red_gain: next.red_gain,
+            blue_gain: next.blue_gain,
+          });
+          adoptWb(manual);
+          return;
+        }
+        adoptWb(next);
+      })
       .catch(() => {});
   }, []);
 
@@ -78,10 +87,21 @@ export default function WbControls() {
     setTuning((prev) => (prev ? { ...prev, tuning: value } : prev));
     setTuningBusy(true);
     saveTuning({ tuning: value })
-      .then((t) => {
+      .then(async (t) => {
         setTuning(t);
-        // Switching tuning flips presets_supported — refetch WB to reflect it.
-        return getWhiteBalance().then(adoptWb);
+        // NoIR's greyworld tuning is a manual-gain workflow. Preserve the
+        // current live gains when entering it, then expose fixed M controls.
+        const next = await getWhiteBalance();
+        if (value === "default" && next.mode !== "manual") {
+          const manual = await setWhiteBalance({
+            mode: "manual",
+            red_gain: next.red_gain,
+            blue_gain: next.blue_gain,
+          });
+          adoptWb(manual);
+          return;
+        }
+        adoptWb(next);
       })
       .catch(() => {})
       .finally(() => setTuningBusy(false));
@@ -205,7 +225,6 @@ export default function WbControls() {
             ).map(({ key, label, gradient }) => {
               const adjust = wbAdjust?.[key] ?? 0;
               const manual = wb.mode === "manual";
-              const isStandard = tuning?.tuning === "standard";
               return (
                 <Slider
                   key={key}
@@ -223,12 +242,7 @@ export default function WbControls() {
                       max={100}
                       step={1}
                       value={Math.round(adjust * 100)}
-                      thumbContent={isStandard ? undefined : manual ? "M" : "A"}
-                      onTap={
-                        isStandard
-                          ? undefined
-                          : () => (manual ? enterAutoWb() : enterManualWb())
-                      }
+                      thumbContent="M"
                       onChange={(e) => {
                         if (manual) {
                           adjustWb({ [key]: Number(e.target.value) / 100 });

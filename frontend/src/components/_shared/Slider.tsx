@@ -202,7 +202,7 @@ export function SliderInput({
           aria-label="Slider locked. Press and hold for two seconds to unlock."
           style={thumbPosition}
           className={[
-            "absolute z-20 flex items-center justify-center rounded-full text-stone-800",
+            "absolute z-20 flex items-center justify-center rounded-full bg-stone-100 text-stone-800",
             vertical
               ? "left-1/2 -translate-x-1/2 -translate-y-1/2"
               : "top-1/2 -translate-x-1/2 -translate-y-1/2",

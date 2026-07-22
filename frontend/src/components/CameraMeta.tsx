@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   cameraInfo,
   cameraMetadata,
@@ -65,11 +65,16 @@ export default function CameraMeta() {
   const [meta, setMeta] = useState<CameraMetadata | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Retry until the backend is reachable — a one-shot fetch leaves the tab
+  // stuck on "Failed to fetch" if the API was briefly down at mount.
+  usePolling(() => {
     cameraInfo()
-      .then(setInfo)
+      .then((next) => {
+        setInfo(next);
+        setError(null);
+      })
       .catch((e) => setError(errorMessage(e)));
-  }, []);
+  }, 3000);
 
   usePolling(() => {
     cameraMetadata()
@@ -77,7 +82,7 @@ export default function CameraMeta() {
       .catch(() => setMeta(null));
   }, 1000);
 
-  if (error) {
+  if (error && !info) {
     return (
       <p className="flex h-full items-center justify-center text-sm text-red-500">
         Camera metadata unavailable: {error}

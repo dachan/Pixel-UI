@@ -65,7 +65,7 @@ export default function CameraSettings({
 }) {
   const [rotation, setRotation] = useState<number | null>(null);
   const [quality, setQuality] = useState<number | null>(null);
-  const [qualityLocked, setQualityLocked] = useState(false);
+  const [qualityLocked, setQualityLocked] = useState(true);
   const [format, setFormat] = useState<CaptureFormatValue | null>(null);
   // Shared with StatusRow via context — one poll for both, not two.
   const thermal = useThermal();
@@ -283,6 +283,7 @@ export default function CameraSettings({
             <Slider
               orientation="horizontal"
               value={quality}
+              defaultLocked
               onLockedChange={setQualityLocked}
             >
               <SliderInput
@@ -339,9 +340,7 @@ export default function CameraSettings({
             selected={confirmingDelete}
             onClick={onDeleteAllClick}
           >
-            {confirmingDelete
-              ? "Tap Again To Delete Everything"
-              : "Delete All Photos"}
+            {confirmingDelete ? "Confirm" : "Delete All Photos"}
           </Button>
           {deleteResult && (
             <p className="text-xs text-stone-500">{deleteResult}</p>
@@ -361,9 +360,7 @@ export default function CameraSettings({
             selected={confirmingExit}
             onClick={onExitClick}
           >
-            {confirmingExit
-              ? "Tap Again To Reboot To Desktop"
-              : "Exit To Desktop"}
+            {confirmingExit ? "Confirm" : "Exit To Desktop"}
           </Button>
         </section>
       </div>

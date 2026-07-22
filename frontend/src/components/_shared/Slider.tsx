@@ -233,6 +233,7 @@ type SliderProps = {
   label?: string;
   value?: ReactNode;
   children: ReactNode;
+  defaultLocked?: boolean;
   onLockedChange?: (locked: boolean) => void;
 };
 
@@ -241,9 +242,10 @@ export default function Slider({
   label,
   value,
   children,
+  defaultLocked = false,
   onLockedChange,
 }: SliderProps) {
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useState(defaultLocked);
   function updateLocked(next: boolean) {
     setLocked(next);
     onLockedChange?.(next);

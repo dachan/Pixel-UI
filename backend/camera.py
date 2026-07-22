@@ -191,7 +191,7 @@ class BaseCamera(abc.ABC):
         # JPEG quality (1..100) for saved captures.
         self._quality = 100
         # Capture format (one of FORMATS).
-        self._format = "raw+jpeg"
+        self._format = "jpeg"
         # Exposure intent. Shutter and ISO each retain their manual value while
         # automatic, so either component can be switched back independently.
         self._controls = {
@@ -616,18 +616,44 @@ class BaseCamera(abc.ABC):
         (int, ExposureTime in microseconds). ``auto_exposure`` remains an input
         compatibility alias that changes both component modes together.
         """
+        next_auto_shutter = self._controls["auto_shutter"]
+        next_auto_iso = self._controls["auto_iso"]
         if settings.get("auto_exposure") is not None:
-            automatic = bool(settings["auto_exposure"])
-            self._controls["auto_shutter"] = automatic
-            self._controls["auto_iso"] = automatic
+            next_auto_shutter = bool(settings["auto_exposure"])
+            next_auto_iso = bool(settings["auto_exposure"])
         if settings.get("auto_shutter") is not None:
-            self._controls["auto_shutter"] = bool(settings["auto_shutter"])
+            next_auto_shutter = bool(settings["auto_shutter"])
         if settings.get("auto_iso") is not None:
-            self._controls["auto_iso"] = bool(settings["auto_iso"])
+            next_auto_iso = bool(settings["auto_iso"])
+
+        # Freeze each component at the value auto-exposure selected when the
+        # caller switches it to manual. This applies to every client, not just
+        # the touchscreen UI, and prevents a jump to an older saved value.
+        live_iso = live_shutter = None
+        if (
+            (
+                self._controls["auto_iso"]
+                and not next_auto_iso
+                and settings.get("iso") is None
+            )
+            or (
+                self._controls["auto_shutter"]
+                and not next_auto_shutter
+                and settings.get("shutter_us") is None
+            )
+        ):
+            live_iso, live_shutter = _live_exposure_from_metadata(self.metadata())
+
+        self._controls["auto_shutter"] = next_auto_shutter
+        self._controls["auto_iso"] = next_auto_iso
         if settings.get("iso") is not None:
             self._controls["iso"] = max(100, int(settings["iso"]))
+        elif not next_auto_iso and live_iso is not None:
+            self._controls["iso"] = live_iso
         if settings.get("shutter_us") is not None:
             self._controls["shutter_us"] = max(1, int(settings["shutter_us"]))
+        elif not next_auto_shutter and live_shutter is not None:
+            self._controls["shutter_us"] = live_shutter
         self._apply_controls()
         self._save_settings()
         return self.controls_state()

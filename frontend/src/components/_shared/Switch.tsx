@@ -18,7 +18,7 @@ export default function Switch({
       }`}
     >
       <span
-        className={`absolute top-1 h-3.5 w-3.5 rounded-md bg-white transition-all ${
+        className={`absolute top-1 h-3.5 w-3.5 rounded-full bg-white transition-all ${
           checked ? "left-6" : "left-1"
         }`}
       />

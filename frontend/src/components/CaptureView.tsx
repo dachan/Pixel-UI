@@ -231,16 +231,26 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
           </div>
         )}
         {focusRing && (
-          <div
+          <svg
             key={focusRing.key}
             aria-hidden
-            className="pointer-events-none absolute h-16 w-16 rounded-md border-2 border-yellow-400"
+            viewBox="0 0 40 40"
+            className="pointer-events-none absolute size-10 text-yellow-400"
             style={{
               left: `${focusRing.x * 100}%`,
               top: `${focusRing.y * 100}%`,
               animation: `focus-ring ${FOCUS_RING_MS}ms ease-out forwards`,
             }}
-          />
+          >
+            <circle
+              cx="20"
+              cy="20"
+              r="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            />
+          </svg>
         )}
         {flashing && (
           <div

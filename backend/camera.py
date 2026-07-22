@@ -699,15 +699,6 @@ class MockCamera(BaseCamera):
             r = 48
             draw.ellipse((x - r, y - r, x + r, y + r), fill=(80, 200, 255))
 
-        # Tap-to-focus marker: drawn in native coords pre-rotation, so after
-        # the stream is rotated it lands exactly where the user tapped.
-        if self._af_point:
-            px = int(self._af_point[0] * self.WIDTH)
-            py = int(self._af_point[1] * self.HEIGHT)
-            r = 40
-            draw.rectangle((px - r, py - r, px + r, py + r),
-                           outline=(255, 210, 80), width=3)
-
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=85)
         return buf.getvalue()

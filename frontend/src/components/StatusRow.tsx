@@ -57,7 +57,7 @@ export default function StatusRow() {
   }, []);
 
   return (
-    <div className="flex w-full items-center justify-between bg-cyan-100 px-4 py-2">
+    <div className="flex w-full items-center justify-between border-b border-stone-300 bg-stone-100 px-4 py-2">
       <StatusItem
         label="Time"
         value={MOCK_TIME ?? (now ? formatTime(now) : "—")}

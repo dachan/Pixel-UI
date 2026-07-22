@@ -19,22 +19,26 @@ img {
   user-select: none;
 }
 
-/* Tap-to-focus indicator: a ring that snaps in, holds, and fades away. */
+/* Tap-to-focus indicator: a circle that snaps in, holds, and fades away. */
 @keyframes focus-ring {
   0% {
     transform: translate(-50%, -50%) scale(1.6);
     opacity: 0;
+    border-radius: 50%;
   }
   25% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
+    border-radius: 50%;
   }
   70% {
     opacity: 1;
+    border-radius: 50%;
   }
   100% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 0;
+    border-radius: 50%;
   }
 }
 

@@ -23,6 +23,7 @@ from camera_service import (
     audit_log,
     camera,
     capture_events,
+    delete_capture as delete_capture_file,
     delete_all_captures,
     do_capture,
     thermal,
@@ -193,6 +194,17 @@ def get_capture(filename):
     return send_file(path, mimetype="image/jpeg", max_age=year)
 
 
+@api.route("/captures/<path:filename>", methods=["DELETE"])
+def delete_capture(filename):
+    """Delete one JPEG gallery item and its paired RAW capture, if any."""
+    if os.path.basename(filename) != filename or not filename.endswith(".jpg"):
+        return "Not found", 404
+    path = os.path.join(CAPTURES_DIR, filename)
+    if not os.path.isfile(path):
+        return "Not found", 404
+    return jsonify(deleted=delete_capture_file(filename, source=request.remote_addr))
+
+
 # --- Camera info + settings --------------------------------------------------- #
 
 @api.route("/camera/info")
@@ -209,7 +221,10 @@ def camera_metadata():
 
 @api.route("/camera/controls", methods=["GET", "POST"])
 def camera_controls():
-    """GET current exposure state; POST {auto_exposure, iso, shutter_us} to set.
+    """GET exposure state; POST per-component auto modes and values to set.
+
+    Accepts ``auto_shutter``, ``auto_iso``, ``shutter_us``, and ``iso``.
+    ``auto_exposure`` remains a compatibility alias for both auto modes.
 
     Aperture is not included: Pi cameras have no software-controllable aperture.
     """
@@ -308,8 +323,14 @@ def _battery_extreme(volts, at):
 def system_temperature():
     """Pi temperatures plus the app's thermal-throttle state."""
     volts = thermal_config.read_battery_voltage()
+    # Smoothed, load-compensated SOC from the monitor (see
+    # ThermalMonitor._update_battery_percent); fall back to a direct reading
+    # only before the monitor's first sample (cold start).
+    level = thermal.battery_percent
+    if level is None:
+        level = thermal_config.read_battery_level(volts)
     return jsonify(
-        battery_level=thermal_config.read_battery_level(volts),
+        battery_level=level,
         battery_volts=round(volts, 2) if volts is not None else None,
         # Lowest/highest cell voltage ever observed (persisted across
         # restarts) — a single instantaneous reading can't show whether the

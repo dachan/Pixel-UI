@@ -130,6 +130,37 @@ def delete_all_captures(source: str = "") -> int:
     return deleted
 
 
+def delete_capture(filename: str, source: str = "") -> int:
+    """Delete one gallery capture, its paired RAW file, and thumbnail.
+
+    Gallery items are JPEGs, but a JPEG may have a same-named DNG companion
+    when the camera is set to RAW+JPEG. Treating those as one photo keeps the
+    gallery action from leaving a raw file behind.
+    """
+    if os.path.basename(filename) != filename or not filename.endswith(".jpg"):
+        return 0
+
+    stem, _extension = os.path.splitext(filename)
+    names = (filename, stem + ".dng")
+    deleted = 0
+    for directory, count_them in ((CAPTURES_DIR, True), (THUMBS_DIR, False)):
+        for name in names:
+            path = os.path.join(directory, name)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    if count_them:
+                        deleted += 1
+            except OSError:
+                pass
+
+    detail = f"{filename}: removed {deleted} capture file(s)"
+    if source:
+        detail += f", from {source}"
+    audit_log("delete-one", detail)
+    return deleted
+
+
 def _new_capture_path() -> str:
     """Timestamped JPEG path that doesn't collide with an existing capture.
 

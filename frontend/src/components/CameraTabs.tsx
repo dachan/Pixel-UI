@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CameraPreview } from "@/components/CaptureView";
 import CameraControls, {
   CONTROL_TABS,
@@ -10,6 +10,7 @@ import CameraMeta from "@/components/CameraMeta";
 import CaptureGallery from "@/components/CaptureGallery";
 import CameraSettings from "@/components/CameraSettings";
 import ButtonGroup from "@/components/_shared/ButtonGroup";
+import { captureEventsUrl } from "@/lib/camera-api";
 import { useStoredBool } from "@/lib/use-stored-bool";
 import { useReloadOnRestart } from "@/lib/use-reload-on-restart";
 
@@ -38,6 +39,18 @@ export default function CameraTabs() {
     "showCaptureButton",
     true,
   );
+
+  // The physical shutter can fire while the user is browsing Gallery,
+  // Settings, or Meta. Capture events are global, so bring the live camera
+  // back into view when that happens. The on-screen shutter already lives on
+  // this tab, making the same event a no-op there.
+  useEffect(() => {
+    const source = new EventSource(captureEventsUrl());
+    source.onmessage = (event) => {
+      if (event.data === "start") setActive("camera");
+    };
+    return () => source.close();
+  }, []);
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-3 pb-3">

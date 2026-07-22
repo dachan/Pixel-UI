@@ -23,9 +23,6 @@ const TUNING_TABS = [
   { id: "standard", label: "Standard" },
 ] as const;
 
-// Same Auto/Manual tab pair as Exposure and Focus, so all three panels look
-// consistent — Auto and Manual always sit beside each other, never mixed in
-// with the preset buttons below.
 const MODE_TABS = [
   { id: "auto", label: "Auto" },
   { id: "manual", label: "Manual" },
@@ -124,6 +121,11 @@ export default function WbControls() {
     applyWb({ mode: "manual", ...wbGainsFor(anchor) });
   }
 
+  function enterAutoWb() {
+    setWbAdjust(null);
+    applyWb({ mode: "auto" });
+  }
+
   function adjustWb(patch: { temp?: number; tint?: number }) {
     if (!wbAdjust) return;
     const next = { ...wbAdjust, ...patch };
@@ -134,6 +136,8 @@ export default function WbControls() {
   if (!wb) {
     return <p className="text-sm text-stone-500">loading…</p>;
   }
+
+  const showWbSliders = tuning?.tuning !== "standard" || wb.mode === "manual";
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto">
@@ -147,15 +151,17 @@ export default function WbControls() {
         </div>
       )}
 
-      <div className="flex shrink-0 items-center justify-center">
-        <ButtonGroup
-          items={MODE_TABS}
-          active={wb.mode === "manual" ? "manual" : "auto"}
-          onChange={(id) =>
-            id === "manual" ? enterManualWb() : applyWb({ mode: "auto" })
-          }
-        />
-      </div>
+      {tuning?.tuning === "standard" && (
+        <div className="flex shrink-0 items-center justify-center">
+          <ButtonGroup
+            items={MODE_TABS}
+            active={wb.mode === "manual" ? "manual" : "auto"}
+            onChange={(id) =>
+              id === "manual" ? enterManualWb() : enterAutoWb()
+            }
+          />
+        </div>
+      )}
 
       {wb.presets_supported && wb.mode !== "manual" && (
         <div className="flex shrink-0 flex-col gap-2">
@@ -178,65 +184,68 @@ export default function WbControls() {
         </div>
       )}
 
-      {!wb.presets_supported && (
-        <p className="shrink-0 text-center text-xs text-stone-500">
-          This NoIR sensor ignores WB presets — use Manual gains to shift
-          colour.
-        </p>
-      )}
-      {wb.mode === "manual" && wbAdjust ? (
-        <div className="flex flex-col gap-3">
-          {(
-            [
-              {
-                key: "temp",
-                label: "Temp",
-                gradient:
-                  "linear-gradient(to right, #6ab0ff, #f4f4f5, #ffb057)",
-              },
-              {
-                key: "tint",
-                label: "Tint",
-                gradient:
-                  "linear-gradient(to right, #7bd88f, #f4f4f5, #e08ae0)",
-              },
-            ] as const
-          ).map(({ key, label, gradient }) => (
-            <Slider
-              key={key}
-              orientation="horizontal"
-              label={label}
-              value={Math.round(wbAdjust[key] * 100)}
-            >
-              {/* One-off gradient track: painted behind a transparent range track. */}
-              <div className="relative flex h-12 min-w-0 flex-1 items-center">
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 top-1/2 z-0 h-1.5 -translate-y-1/2 rounded-full"
-                  style={{ background: gradient }}
-                />
-                <SliderInput
-                  orientation="horizontal"
-                  min={-100}
-                  max={100}
-                  step={1}
-                  value={Math.round(wbAdjust[key] * 100)}
-                  onChange={(e) =>
-                    adjustWb({ [key]: Number(e.target.value) / 100 })
-                  }
-                  className="relative z-10 [&::-moz-range-track]:!bg-transparent [&::-webkit-slider-runnable-track]:!bg-transparent [&::-moz-range-thumb]:!size-8 [&::-moz-range-thumb]:!bg-stone-100 [&::-webkit-slider-thumb]:!-mt-3.25 [&::-webkit-slider-thumb]:!size-8 [&::-webkit-slider-thumb]:!bg-stone-100"
-                />
-              </div>
-            </Slider>
-          ))}
+      {showWbSliders && (
+        <>
+          <div className="flex min-h-0 flex-1 justify-around gap-4">
+            {(
+              [
+                {
+                  key: "temp",
+                  label: "Temp",
+                  gradient:
+                    "linear-gradient(to top, #6ab0ff, #f4f4f5, #ffb057)",
+                },
+                {
+                  key: "tint",
+                  label: "Tint",
+                  gradient:
+                    "linear-gradient(to top, #7bd88f, #f4f4f5, #e08ae0)",
+                },
+              ] as const
+            ).map(({ key, label, gradient }) => {
+              const adjust = wbAdjust?.[key] ?? 0;
+              const manual = wb.mode === "manual";
+              const isStandard = tuning?.tuning === "standard";
+              return (
+                <Slider
+                  key={key}
+                  label={label}
+                  value={Math.round(adjust * 100)}
+                >
+                  <div className="relative flex h-full min-h-0 w-12 justify-center">
+                    <div
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 left-1/2 z-0 w-1.5 -translate-x-1/2 rounded-full"
+                      style={{ background: gradient }}
+                    />
+                    <SliderInput
+                      min={-100}
+                      max={100}
+                      step={1}
+                      value={Math.round(adjust * 100)}
+                      thumbContent={isStandard ? undefined : manual ? "M" : "A"}
+                      onTap={
+                        isStandard
+                          ? undefined
+                          : () => (manual ? enterAutoWb() : enterManualWb())
+                      }
+                      onChange={(e) => {
+                        if (manual) {
+                          adjustWb({ [key]: Number(e.target.value) / 100 });
+                        }
+                      }}
+                      className="relative z-10 [&::-moz-range-track]:!bg-transparent [&::-webkit-slider-runnable-track]:!bg-transparent"
+                    />
+                  </div>
+                </Slider>
+              );
+            })}
+          </div>
           <p className="text-center font-mono text-xs text-stone-700">
-            R {wb.red_gain.toFixed(2)} · B {wb.blue_gain.toFixed(2)}
+            {wb.mode === "manual" ? "Manual Gains" : "Live Gains"} · R{" "}
+            {wb.red_gain.toFixed(2)} · B {wb.blue_gain.toFixed(2)}
           </p>
-        </div>
-      ) : (
-        <p className="text-center font-mono text-xs text-stone-700">
-          live gains · R {wb.red_gain.toFixed(2)} · B {wb.blue_gain.toFixed(2)}
-        </p>
+        </>
       )}
 
       {tuningBusy && (

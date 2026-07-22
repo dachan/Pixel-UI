@@ -7,15 +7,7 @@ import {
   type CameraControlsState,
 } from "@/lib/camera-api";
 import { usePolling } from "@/lib/use-polling";
-import ButtonGroup from "@/components/_shared/ButtonGroup";
-import Slider, {
-  SliderInput,
-} from "@/components/_shared/Slider";
-
-const MODE_TABS = [
-  { id: "auto", label: "Auto" },
-  { id: "manual", label: "Manual" },
-] as const;
+import Slider, { SliderInput } from "@/components/_shared/Slider";
 
 const SHUTTER_STEPS = [
   500, 1000, 2000, 4000, 8000, 10000, 16667, 33333, 66667, 125000, 250000,
@@ -42,7 +34,8 @@ function nearestShutterIndex(us: number): number {
 
 export default function ExposureControls() {
   const [state, setState] = useState<CameraControlsState>({
-    auto_exposure: true,
+    auto_shutter: true,
+    auto_iso: true,
     iso: 100,
     shutter_us: 10000,
   });
@@ -64,7 +57,7 @@ export default function ExposureControls() {
         .catch(() => {});
     },
     1200,
-    state.auto_exposure,
+    state.auto_shutter || state.auto_iso,
   );
 
   function apply(patch: Partial<CameraControlsState>) {
@@ -74,7 +67,8 @@ export default function ExposureControls() {
       .catch(() => {});
   }
 
-  const manual = !state.auto_exposure;
+  const shutterManual = !state.auto_shutter;
+  const isoManual = !state.auto_iso;
   const isoSliderValue = Math.min(
     1600,
     Math.max(100, Math.round(state.iso / 100) * 100),
@@ -83,14 +77,6 @@ export default function ExposureControls() {
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex shrink-0 items-center justify-center">
-        <ButtonGroup
-          items={MODE_TABS}
-          active={manual ? "manual" : "auto"}
-          onChange={(id) => apply({ auto_exposure: id === "auto" })}
-        />
-      </div>
-
       <div className="flex min-h-0 flex-1 justify-around gap-2">
         <Slider label="Shutter" value={shutterLabel(state.shutter_us)}>
           <SliderInput
@@ -98,10 +84,13 @@ export default function ExposureControls() {
             max={SHUTTER_STEPS.length - 1}
             step={1}
             value={shutterIdx}
-            disabled={!manual}
-            onChange={(e) =>
-              apply({ shutter_us: SHUTTER_STEPS[Number(e.target.value)] })
-            }
+            thumbContent={shutterManual ? "M" : "A"}
+            onTap={() => apply({ auto_shutter: shutterManual })}
+            onChange={(e) => {
+              if (shutterManual) {
+                apply({ shutter_us: SHUTTER_STEPS[Number(e.target.value)] });
+              }
+            }}
           />
         </Slider>
 
@@ -111,8 +100,11 @@ export default function ExposureControls() {
             max={1600}
             step={100}
             value={isoSliderValue}
-            disabled={!manual}
-            onChange={(e) => apply({ iso: Number(e.target.value) })}
+            thumbContent={isoManual ? "M" : "A"}
+            onTap={() => apply({ auto_iso: isoManual })}
+            onChange={(e) => {
+              if (isoManual) apply({ iso: Number(e.target.value) });
+            }}
           />
         </Slider>
 

@@ -86,6 +86,18 @@ export async function deleteAllCaptures(): Promise<number> {
   return data.deleted;
 }
 
+// Delete a gallery JPEG and its paired RAW file, if it has one.
+export async function deleteCapture(filename: string): Promise<number> {
+  const res = await fetch(
+    `${BASE}/api/captures/${encodeURIComponent(filename)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  const data = await parseJson<{ deleted: number }>(res, "delete capture");
+  return data.deleted;
+}
+
 // --- Camera metadata --------------------------------------------------------
 
 export type ControlRange = {
@@ -112,7 +124,8 @@ export function cameraMetadata(): Promise<CameraMetadata> {
 // --- Exposure controls (ISO + shutter; aperture is fixed on Pi cameras) -----
 
 export type CameraControlsState = {
-  auto_exposure: boolean;
+  auto_shutter: boolean;
+  auto_iso: boolean;
   iso: number;
   shutter_us: number;
 };

@@ -1,10 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { captureThumbUrl, captureUrl, listCaptures } from "@/lib/camera-api";
+import {
+  captureThumbUrl,
+  captureUrl,
+  deleteCapture,
+  listCaptures,
+} from "@/lib/camera-api";
 import { errorMessage } from "@/lib/errors";
 import { usePolling } from "@/lib/use-polling";
 import DragScrollArea from "@/components/DragScrollArea";
+import Button from "@/components/_shared/Button";
 
 export default function CaptureGallery() {
   const [captures, setCaptures] = useState<string[]>([]);
@@ -12,6 +18,31 @@ export default function CaptureGallery() {
   const [loading, setLoading] = useState(true);
   // Filename of the capture opened full-screen (null = grid view).
   const [selected, setSelected] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  function closeSelected() {
+    setSelected(null);
+    setConfirmingDelete(false);
+  }
+
+  function deleteSelected() {
+    if (!selected || deleting) return;
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      window.setTimeout(() => setConfirmingDelete(false), 4000);
+      return;
+    }
+
+    setDeleting(true);
+    deleteCapture(selected)
+      .then(() => {
+        setCaptures((current) => current.filter((name) => name !== selected));
+        closeSelected();
+      })
+      .catch((e) => setError(errorMessage(e)))
+      .finally(() => setDeleting(false));
+  }
 
   usePolling(() => {
     listCaptures()
@@ -76,17 +107,44 @@ export default function CaptureGallery() {
         <div
           role="dialog"
           aria-label={selected}
-          onClick={() => setSelected(null)}
+          onClick={closeSelected}
           className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/95 p-4"
         >
-          <img
-            src={captureUrl(selected)}
-            alt={selected}
-            className="max-h-full max-w-full object-contain"
-          />
-          <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md border border-stone-300 bg-stone-100 px-2 py-1 font-mono text-xs text-stone-500">
-            {selected} · Tap To Close
-          </span>
+          <div className="relative flex max-h-full max-w-full items-center justify-center">
+            <img
+              src={captureUrl(selected)}
+              alt={selected}
+              className="max-h-full max-w-full object-contain"
+            />
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
+              <Button
+                variant="destructive"
+                selected={confirmingDelete}
+                disabled={deleting}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  deleteSelected();
+                }}
+                className="w-auto min-w-32 whitespace-nowrap"
+              >
+                {deleting
+                  ? "Deleting…"
+                  : confirmingDelete
+                    ? "Confirm"
+                    : "Delete Photo"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeSelected();
+                }}
+                className="w-auto min-w-32 whitespace-nowrap"
+              >
+                Tap To Close
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </DragScrollArea>

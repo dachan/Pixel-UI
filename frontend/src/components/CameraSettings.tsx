@@ -65,6 +65,7 @@ export default function CameraSettings({
 }) {
   const [rotation, setRotation] = useState<number | null>(null);
   const [quality, setQuality] = useState<number | null>(null);
+  const [qualityLocked, setQualityLocked] = useState(false);
   const [format, setFormat] = useState<CaptureFormatValue | null>(null);
   // Shared with StatusRow via context — one poll for both, not two.
   const thermal = useThermal();
@@ -115,7 +116,6 @@ export default function CameraSettings({
     setThrottleEnabled(enabled).catch((e) => setError(errorMessage(e)));
   }
 
-
   const [resettingLog, setResettingLog] = useState(false);
   function onResetBatteryLog() {
     setResettingLog(true);
@@ -163,7 +163,9 @@ export default function CameraSettings({
           thermal?.battery_volts !== undefined && (
             <section className="flex flex-col gap-2 text-stone-500">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-stone-700">Battery</h2>
+                <h2 className="text-sm font-semibold text-stone-700">
+                  Battery
+                </h2>
                 <button
                   type="button"
                   onClick={onResetBatteryLog}
@@ -213,8 +215,8 @@ export default function CameraSettings({
             />
             {thermal.throttled && (
               <p className="text-sm font-semibold text-amber-400">
-                Thermal throttling active — CPU capped at 1.5 GHz and preview
-                at 15fps until the Pi cools below{" "}
+                Thermal throttling active — CPU capped at 1.5 GHz and preview at
+                15fps until the Pi cools below{" "}
                 {Math.round(thermal.throttle_at - 5)} °C.
               </p>
             )}
@@ -258,8 +260,18 @@ export default function CameraSettings({
 
         <section className="flex flex-col gap-2">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-semibold text-stone-700">
+            <h2 className="flex items-center gap-1 text-sm font-semibold text-stone-700">
               Capture Quality
+              {qualityLocked && (
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden
+                  className="relative -top-0.5 size-4 fill-none stroke-current stroke-2"
+                >
+                  <rect x="5" y="10" width="14" height="10" rx="2" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                </svg>
+              )}
             </h2>
             <p className="text-xs text-stone-500">
               JPEG quality for saved photos (1–100). Higher means larger files.
@@ -268,7 +280,11 @@ export default function CameraSettings({
           {quality === null ? (
             <p className="text-xs text-stone-500">loading…</p>
           ) : (
-            <Slider orientation="horizontal" value={quality}>
+            <Slider
+              orientation="horizontal"
+              value={quality}
+              onLockedChange={setQualityLocked}
+            >
               <SliderInput
                 orientation="horizontal"
                 min={1}

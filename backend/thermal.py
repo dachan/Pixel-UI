@@ -42,18 +42,14 @@ I2C_SLAVE = 0x0703
 X1201_I2C_BUS = "/dev/i2c-1"
 X1201_FUEL_GAUGE_ADDR = 0x36
 X1201_VCELL_REG = 0x02
+X1201_SOC_REG = 0x04
 # VCELL LSB in volts (MAX1704x: 78.125 µV). Works for both MAX17040 and
 # MAX17048 — the /16 vs ×16 scale difference cancels to the same value.
 X1201_VCELL_LSB_V = 78.125e-6
 
-# Single-cell Li-ion/LiPo open-circuit-voltage -> state-of-charge, the
-# standard reference curve used when a fuel gauge's own model can't be
-# trusted (ascending by voltage; reflects the real discharge shape — flat
-# through the ~40-90% midrange, steep at both ends — unlike a straight
-# line). This specific X1201 gauge is a MAX17040/41-class chip with a
-# fixed, non-programmable internal model that reads implausibly low for
-# this battery (confirmed via a QuickStart reset: no change), so voltage
-# through this curve is used instead of its SOC register.
+# Single-cell Li-ion/LiPo open-circuit-voltage -> state-of-charge fallback
+# curve. The X1201/MAX1704x fuel gauge's SOC register is preferred whenever
+# available; this curve is only used if the gauge cannot be read.
 _OCV_CURVE_V_PCT: tuple[tuple[float, int], ...] = (
     (3.27, 0), (3.61, 5), (3.69, 10), (3.71, 15), (3.73, 20),
     (3.75, 25), (3.77, 30), (3.79, 35), (3.80, 40), (3.82, 45),
@@ -97,6 +93,20 @@ CHARGE_RISE_V = 0.03
 # can't hold a high voltage flat. Set below the ~4.1 V charge plateau so the
 # slow constant-voltage phase near full still reads as charging.
 BATTERY_FULL_HOLD_V = 4.05
+
+# Displayed state-of-charge smoothing. VCELL is read once per tick into
+# ThermalMonitor._volts; the SOC shown to the user is derived from the
+# *maximum* voltage over this trailing window rather than the latest raw
+# sample. While discharging, the Pi's bursty load only ever drags VCELL
+# *below* the true open-circuit voltage — never above — so the recent max is
+# the sample closest to the unloaded resting voltage the OCV curve expects: a
+# load-sag correction that needs no current-sense hardware. Kept short (and
+# <= CHARGE_WINDOW_S, the deque's span) so a genuine SOC drop isn't masked for
+# long by a stale high reading.
+OCV_WINDOW_S = 60
+# Per-tick weight on the newest reading when easing the displayed SOC toward
+# its target, so the gauge settles instead of stepping as samples age out.
+BATTERY_EMA_ALPHA = 0.4
 
 
 def read_temperatures() -> dict[str, float]:
@@ -143,13 +153,11 @@ def _battery_supplies():
             continue
 
 
-def read_battery_level(volts: float | None = None) -> int | None:
-    """Battery percentage: Linux power-supply sysfs ``capacity`` if present
-    (authoritative when available), else derived from cell voltage via the
-    standard Li-ion OCV curve (see read_battery_voltage, voltage_to_percent).
-
-    Pass ``volts`` if the voltage was just read, to skip a second (I2C)
-    read for the fallback path.
+def _read_sysfs_capacity() -> int | None:
+    """Battery percentage from a Linux power-supply ``capacity`` file, or None
+    if no such sysfs battery is present. Authoritative when available — a
+    kernel fuel-gauge driver's own, already-filtered estimate — so it's used
+    as-is, without the voltage-curve smoothing this hardware's I2C gauge needs.
     """
     for supply in _battery_supplies():
         try:
@@ -157,6 +165,27 @@ def read_battery_level(volts: float | None = None) -> int | None:
                 return max(0, min(100, int(f.read().strip())))
         except (OSError, ValueError):
             continue
+    return None
+
+
+def read_battery_level(volts: float | None = None) -> int | None:
+    """Battery percentage from the best available capacity source.
+
+    Prefer Linux power-supply capacity, then the X1201 fuel gauge's SOC
+    estimate. Only fall back to the voltage curve if neither is available.
+
+    Pass ``volts`` if the voltage was just read, to skip a second (I2C)
+    read for the fallback path.
+
+    This is the instantaneous estimate; the monitor uses it directly for
+    hardware-provided capacity and smooths only the voltage fallback.
+    """
+    capacity = _read_sysfs_capacity()
+    if capacity is not None:
+        return capacity
+    gauge_soc = _read_x1201_soc()
+    if gauge_soc is not None:
+        return gauge_soc
     if volts is None:
         volts = read_battery_voltage()
     return voltage_to_percent(volts) if volts is not None else None
@@ -183,20 +212,39 @@ def read_battery_voltage() -> float | None:
     return None
 
 
-def _read_x1201_voltage() -> float | None:
-    """Cell voltage (V) from the Geekworm X1201/MAX1704x VCELL over I2C."""
+def _read_x1201_register(register: int) -> int | None:
+    """Read one 16-bit register from the X1201/MAX1704x fuel gauge."""
     try:
         import fcntl
 
         with open(X1201_I2C_BUS, "r+b", buffering=0) as bus:
             fcntl.ioctl(bus, I2C_SLAVE, X1201_FUEL_GAUGE_ADDR)
-            bus.write(bytes([X1201_VCELL_REG]))
+            bus.write(bytes([register]))
             data = bus.read(2)
     except OSError:
         return None
     if len(data) != 2:
         return None
-    return ((data[0] << 8) | data[1]) * X1201_VCELL_LSB_V
+    return (data[0] << 8) | data[1]
+
+
+def _read_x1201_voltage() -> float | None:
+    """Cell voltage (V) from the Geekworm X1201/MAX1704x VCELL over I2C."""
+    raw = _read_x1201_register(X1201_VCELL_REG)
+    return raw * X1201_VCELL_LSB_V if raw is not None else None
+
+
+def _read_x1201_soc() -> int | None:
+    """State of charge from the X1201/MAX1704x gauge (0..100%).
+
+    The register is an unsigned fixed-point percentage: high byte is the
+    integer percent and low byte is the fractional part in 1/256ths.
+    """
+    raw = _read_x1201_register(X1201_SOC_REG)
+    if raw is None:
+        return None
+    percent = (raw >> 8) + (raw & 0xFF) / 256
+    return max(0, min(100, round(percent)))
 
 
 def _cpu_freq_bounds() -> tuple[int, int] | None:
@@ -253,6 +301,12 @@ class ThermalMonitor:
         self.battery_max_v: float | None = log.get("max_v")
         self.battery_max_at: float | None = log.get("max_at")
         self.battery_first_at: float | None = log.get("first_at")
+        # Displayed SOC: smoothed, load-compensated, held non-increasing on
+        # battery (see _update_battery_percent). Derived live, not persisted —
+        # it re-baselines within a tick of startup. None until the first
+        # sample; the API falls back to an instantaneous reading until then.
+        self.battery_percent: int | None = None
+        self._battery_percent_f: float | None = None  # unrounded EMA state
         self._on_throttle = on_throttle
         self._on_resume = on_resume
         thread = threading.Thread(
@@ -267,6 +321,7 @@ class ThermalMonitor:
         if volts is None:
             return
         self._update_charging(volts)  # resolves self.charging first
+        self._update_battery_percent()  # the smoothed SOC shown to the user
         # Min/max should reflect the battery's own state, not the charger:
         # while charging, voltage is being actively driven up by the
         # charger's output rather than reflecting the cell's own remaining
@@ -276,6 +331,40 @@ class ThermalMonitor:
         # restart) still gets logged so a real reading isn't dropped.
         if self.charging is not True:
             self._update_battery_extremes(volts)
+
+    def _update_battery_percent(self) -> None:
+        """Update ``battery_percent``, the SOC shown to the user.
+
+        A kernel ``capacity`` file or the X1201 gauge's own SOC estimate wins
+        outright. If neither is available, estimate from the *maximum* cell
+        voltage over OCV_WINDOW_S — the recent sample least depressed by the
+        Pi's load — then ease it with a light EMA.
+        """
+        capacity = _read_sysfs_capacity()
+        if capacity is not None:
+            self._battery_percent_f = float(capacity)
+            self.battery_percent = capacity
+            return
+        gauge_soc = _read_x1201_soc()
+        if gauge_soc is not None:
+            self._battery_percent_f = float(gauge_soc)
+            self.battery_percent = gauge_soc
+            return
+        now = time.monotonic()
+        recent = [v for t, v in self._volts if now - t <= OCV_WINDOW_S]
+        if not recent:
+            return
+        target = float(voltage_to_percent(max(recent)))
+        if self._battery_percent_f is None:
+            self._battery_percent_f = target
+        else:
+            eased = self._battery_percent_f + BATTERY_EMA_ALPHA * (
+                target - self._battery_percent_f
+            )
+            if self.charging is False:
+                eased = min(eased, self._battery_percent_f)  # on battery: only down
+            self._battery_percent_f = eased
+        self.battery_percent = round(self._battery_percent_f)
 
     def _update_battery_extremes(self, volts: float) -> None:
         """Track the lowest/highest cell voltage ever observed while NOT
@@ -335,10 +424,13 @@ class ThermalMonitor:
             self._safely(self._on_resume)
 
     def reset_battery_log(self) -> None:
-        """Clear the persisted battery min/max (e.g. after swapping cells)."""
+        """Clear the persisted battery min/max and the live SOC estimate (e.g.
+        after swapping cells, so the display re-baselines to the new cell
+        instead of staying latched to the old one's level)."""
         self.battery_min_v = self.battery_min_at = None
         self.battery_max_v = self.battery_max_at = None
         self.battery_first_at = None
+        self.battery_percent = self._battery_percent_f = None
         self._battery_log.save({})
 
     def _run(self):

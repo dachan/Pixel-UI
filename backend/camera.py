@@ -65,6 +65,11 @@ _AWB_MODE_IDS = {
 _AF_MANUAL = 0
 _AF_CONTINUOUS = 2
 
+# libcamera exposure component mode values. The PiSP pipeline exposes shutter
+# time and analogue gain as independently automatic or manual controls.
+_EXPOSURE_COMPONENT_AUTO = 0
+_EXPOSURE_COMPONENT_MANUAL = 1
+
 # libcamera AfMeteringEnum values.
 _AF_METERING_AUTO = 0
 _AF_METERING_WINDOWS = 1
@@ -187,10 +192,14 @@ class BaseCamera(abc.ABC):
         self._quality = 100
         # Capture format (one of FORMATS).
         self._format = "raw+jpeg"
-        # Exposure intent: auto, or manual ISO + shutter. Like focus/WB below,
-        # this holds the last-set manual values even while in auto, so they
-        # survive a restart (see _settings_snapshot).
-        self._controls = {"auto_exposure": True, "iso": 100, "shutter_us": 10000}
+        # Exposure intent. Shutter and ISO each retain their manual value while
+        # automatic, so either component can be switched back independently.
+        self._controls = {
+            "auto_shutter": True,
+            "auto_iso": True,
+            "iso": 100,
+            "shutter_us": 10000,
+        }
         # Focus intent (only meaningful when focus_available()).
         self._focus = {"af_mode": "continuous", "lens_position": 1.0}
         # Tap-to-focus point in native sensor coords (None = whole scene).
@@ -602,13 +611,19 @@ class BaseCamera(abc.ABC):
     def set_controls(self, settings: dict) -> dict:
         """Apply exposure settings to the live camera; return the new state.
 
-        Accepted keys (all optional): ``auto_exposure`` (bool), ``iso`` (int,
-        mapped to analogue gain = iso/100), ``shutter_us`` (int, ExposureTime in
-        microseconds). Aperture is intentionally absent — Pi cameras have no
-        software-controllable aperture.
+        Accepted keys (all optional): ``auto_shutter`` and ``auto_iso`` (bool),
+        ``iso`` (int, mapped to analogue gain = iso/100), and ``shutter_us``
+        (int, ExposureTime in microseconds). ``auto_exposure`` remains an input
+        compatibility alias that changes both component modes together.
         """
         if settings.get("auto_exposure") is not None:
-            self._controls["auto_exposure"] = bool(settings["auto_exposure"])
+            automatic = bool(settings["auto_exposure"])
+            self._controls["auto_shutter"] = automatic
+            self._controls["auto_iso"] = automatic
+        if settings.get("auto_shutter") is not None:
+            self._controls["auto_shutter"] = bool(settings["auto_shutter"])
+        if settings.get("auto_iso") is not None:
+            self._controls["auto_iso"] = bool(settings["auto_iso"])
         if settings.get("iso") is not None:
             self._controls["iso"] = max(100, int(settings["iso"]))
         if settings.get("shutter_us") is not None:
@@ -618,18 +633,13 @@ class BaseCamera(abc.ABC):
         return self.controls_state()
 
     def controls_state(self) -> dict:
-        """Current ``{auto_exposure, iso, shutter_us}`` state.
-
-        In auto mode ``iso``/``shutter_us`` are the live values the AE
-        algorithm chose (from frame metadata), not the stored manual ones.
-        """
+        """Current per-component auto/manual state and exposure values."""
         state = dict(self._controls)
-        if state["auto_exposure"]:
-            iso, shutter = _live_exposure_from_metadata(self.metadata())
-            if iso is not None:
-                state["iso"] = iso
-            if shutter is not None:
-                state["shutter_us"] = shutter
+        iso, shutter = _live_exposure_from_metadata(self.metadata())
+        if state["auto_iso"] and iso is not None:
+            state["iso"] = iso
+        if state["auto_shutter"] and shutter is not None:
+            state["shutter_us"] = shutter
         return state
 
 
@@ -776,13 +786,16 @@ class MockCamera(BaseCamera):
         # Live values: a few oscillate with time so the UI visibly updates.
         t = time.time()
         wobble = math.sin(t * 0.7) * 0.5 + 0.5  # 0..1
-        # In manual mode, report the set exposure/gain instead of the wobble.
-        if self._controls["auto_exposure"]:
-            exposure = int(8000 + wobble * 12000)
-            gain = round(1.0 + wobble * 3.0, 3)
-        else:
-            exposure = self._controls["shutter_us"]
-            gain = round(self._controls["iso"] / 100.0, 3)
+        exposure = (
+            int(8000 + wobble * 12000)
+            if self._controls["auto_shutter"]
+            else self._controls["shutter_us"]
+        )
+        gain = (
+            round(1.0 + wobble * 3.0, 3)
+            if self._controls["auto_iso"]
+            else round(self._controls["iso"] / 100.0, 3)
+        )
         # Manual WB reports the set gains; otherwise AWB "chooses" a wobble.
         if self._wb["mode"] == "manual":
             colour_gains = [self._wb["red_gain"], self._wb["blue_gain"]]
@@ -1135,18 +1148,24 @@ class RealCamera(BaseCamera):
 
     def _apply_controls(self) -> None:
         with self._camera_lock:
-            if self._controls["auto_exposure"]:
-                # Hand exposure back to the auto-exposure algorithm.
-                self._picam2.set_controls({"AeEnable": True})
-            else:
-                # Manual: disable AE and pin gain (ISO/100) + exposure time.
-                self._picam2.set_controls(
-                    {
-                        "AeEnable": False,
-                        "AnalogueGain": self._controls["iso"] / 100.0,
-                        "ExposureTime": self._controls["shutter_us"],
-                    }
-                )
+            controls = {
+                "AeEnable": True,
+                "ExposureTimeMode": (
+                    _EXPOSURE_COMPONENT_AUTO
+                    if self._controls["auto_shutter"]
+                    else _EXPOSURE_COMPONENT_MANUAL
+                ),
+                "AnalogueGainMode": (
+                    _EXPOSURE_COMPONENT_AUTO
+                    if self._controls["auto_iso"]
+                    else _EXPOSURE_COMPONENT_MANUAL
+                ),
+            }
+            if not self._controls["auto_shutter"]:
+                controls["ExposureTime"] = self._controls["shutter_us"]
+            if not self._controls["auto_iso"]:
+                controls["AnalogueGain"] = self._controls["iso"] / 100.0
+            self._picam2.set_controls(controls)
 
     def focus_available(self) -> bool:
         # Only cameras with a lens motor (e.g. Camera Module 3) report

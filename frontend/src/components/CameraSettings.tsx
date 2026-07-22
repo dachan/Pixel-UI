@@ -19,20 +19,27 @@ import { errorMessage } from "@/lib/errors";
 import { useThermal, useSetThermal } from "@/lib/thermal-context";
 import DragScrollArea from "@/components/DragScrollArea";
 import SettingToggle from "@/components/SettingToggle";
+import Button from "@/components/_shared/Button";
+import ButtonGroup from "@/components/_shared/ButtonGroup";
+import Slider, { SliderInput } from "@/components/_shared/Slider";
 
 // Capture rotations offered in the UI (degrees clockwise).
-const ROTATIONS = [0, 90, 180, 270] as const;
+const ROTATION_ITEMS = [
+  { id: "0", label: "0°" },
+  { id: "90", label: "90°" },
+  { id: "180", label: "180°" },
+  { id: "270", label: "270°" },
+] as const;
 
-// Capture formats offered in the UI, with friendly labels + descriptions.
-const FORMATS: { value: CaptureFormatValue; label: string; hint: string }[] = [
-  {
-    value: "raw+jpeg",
-    label: "RAW + JPEG",
-    hint: "DNG raw plus a JPEG preview.",
-  },
-  { value: "jpeg", label: "JPEG", hint: "Compressed photo only." },
-  { value: "raw", label: "RAW", hint: "DNG raw only — not shown in Gallery." },
-];
+// Capture formats offered in the UI.
+const FORMAT_ITEMS = [
+  { id: "raw+jpeg", label: "RAW + JPEG" },
+  { id: "jpeg", label: "JPEG" },
+  { id: "raw", label: "RAW" },
+] as const satisfies readonly {
+  id: CaptureFormatValue;
+  label: string;
+}[];
 
 // Relative time for the battery min/max log ("2h 15m ago").
 function formatAgo(unixSeconds: number): string {
@@ -238,26 +245,15 @@ export default function CameraSettings({
             </p>
           </div>
 
-          <div className="grid grid-cols-4 gap-2">
-            {ROTATIONS.map((rot) => {
-              const active = rotation === rot;
-              return (
-                <button
-                  key={rot}
-                  type="button"
-                  onClick={() => apply(rot)}
-                  disabled={rotation === null}
-                  className={`border p-4 text-sm font-semibold transition disabled:opacity-50 ${
-                    active
-                      ? "border-blue-500 bg-blue-600 text-white"
-                      : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
-                  }`}
-                >
-                  {rot}°
-                </button>
-              );
-            })}
-          </div>
+          {rotation === null ? (
+            <p className="text-sm text-stone-500">loading…</p>
+          ) : (
+            <ButtonGroup
+              items={ROTATION_ITEMS}
+              active={String(rotation) as (typeof ROTATION_ITEMS)[number]["id"]}
+              onChange={(id) => apply(Number(id))}
+            />
+          )}
         </section>
 
         <section className="flex flex-col gap-2">
@@ -272,9 +268,9 @@ export default function CameraSettings({
           {quality === null ? (
             <p className="text-sm text-stone-500">loading…</p>
           ) : (
-            <div className="flex items-center gap-4">
-              <input
-                type="range"
+            <Slider orientation="horizontal" value={quality}>
+              <SliderInput
+                orientation="horizontal"
                 min={1}
                 max={100}
                 step={1}
@@ -286,12 +282,8 @@ export default function CameraSettings({
                 onKeyUp={(e) =>
                   commitQuality(Number((e.target as HTMLInputElement).value))
                 }
-                className="h-2 flex-1 cursor-pointer appearance-none bg-stone-700 accent-blue-600"
               />
-              <span className="w-8 text-right font-mono text-sm text-stone-100">
-                {quality}
-              </span>
-            </div>
+            </Slider>
           )}
         </section>
 
@@ -308,33 +300,11 @@ export default function CameraSettings({
           {format === null ? (
             <p className="text-sm text-stone-500">loading…</p>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {FORMATS.map((f) => {
-                const active = format === f.value;
-                return (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() => applyFormat(f.value)}
-                    title={f.hint}
-                    className={`flex flex-col gap-1 border p-3 text-left transition ${
-                      active
-                        ? "border-blue-500 bg-blue-600 text-white"
-                        : "border-gray-300 text-stone-300 hover:border-stone-500 hover:text-white"
-                    }`}
-                  >
-                    <span className="text-sm font-semibold">{f.label}</span>
-                    <span
-                      className={`text-xs ${
-                        active ? "text-blue-100" : "text-stone-500"
-                      }`}
-                    >
-                      {f.hint}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            <ButtonGroup
+              items={FORMAT_ITEMS}
+              active={format}
+              onChange={applyFormat}
+            />
           )}
         </section>
 
@@ -348,19 +318,11 @@ export default function CameraSettings({
               undone.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onDeleteAllClick}
-            className={`border p-4 text-sm font-semibold transition ${
-              confirmingDelete
-                ? "border-red-500 bg-red-500 text-white"
-                : "border-red-500 text-red-500 hover:border-red-600 hover:text-white"
-            }`}
-          >
+          <Button onClick={onDeleteAllClick}>
             {confirmingDelete
               ? "Tap again to delete everything"
               : "Delete all photos"}
-          </button>
+          </Button>
           {deleteResult && (
             <p className="text-sm text-stone-400">{deleteResult}</p>
           )}
@@ -374,19 +336,11 @@ export default function CameraSettings({
               returns to kiosk mode.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onExitClick}
-            className={`border p-4 text-sm font-semibold transition ${
-              confirmingExit
-                ? "border-red-500 bg-red-500 text-white"
-                : "border-red-500 text-red-500 hover:border-red-600 hover:text-white"
-            }`}
-          >
+          <Button onClick={onExitClick}>
             {confirmingExit
               ? "Tap again to reboot to desktop"
               : "Exit to desktop"}
-          </button>
+          </Button>
         </section>
       </div>
     </DragScrollArea>

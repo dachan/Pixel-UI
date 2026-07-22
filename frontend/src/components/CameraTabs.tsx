@@ -9,7 +9,7 @@ import CameraControls, {
 import CameraMeta from "@/components/CameraMeta";
 import CaptureGallery from "@/components/CaptureGallery";
 import CameraSettings from "@/components/CameraSettings";
-import Tabs from "@/components/_shared/Tabs";
+import ButtonGroup from "@/components/_shared/ButtonGroup";
 import { useStoredBool } from "@/lib/use-stored-bool";
 import { useReloadOnRestart } from "@/lib/use-reload-on-restart";
 
@@ -41,7 +41,7 @@ export default function CameraTabs() {
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden px-3 pb-3">
-      <Tabs tabs={TABS} active={active} onChange={setActive} />
+      <ButtonGroup items={TABS} active={active} onChange={setActive} />
       <div className="flex h-full min-h-0 w-full">
         {active === "camera" ? (
           <div className="flex size-full gap-4">
@@ -50,8 +50,8 @@ export default function CameraTabs() {
                 <CameraPreview showGrid={showGrid} />
               </div>
               <div className="shrink-0">
-                <Tabs
-                  tabs={CONTROL_TABS}
+                <ButtonGroup
+                  items={CONTROL_TABS}
                   active={controlPanel}
                   onChange={setControlPanel}
                 />

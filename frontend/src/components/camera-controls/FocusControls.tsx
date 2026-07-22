@@ -2,10 +2,10 @@
 
 import { setFocus } from "@/lib/camera-api";
 import { useFocus, useSetFocus } from "@/lib/focus-context";
-import Tabs from "@/components/_shared/Tabs";
-import VerticalSlider, {
-  VerticalSliderInput,
-} from "@/components/_shared/VerticalSlider";
+import ButtonGroup from "@/components/_shared/ButtonGroup";
+import Slider, {
+  SliderInput,
+} from "@/components/_shared/Slider";
 
 const MODE_TABS = [
   { id: "continuous", label: "Auto" },
@@ -41,19 +41,19 @@ export default function FocusControls() {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex shrink-0 items-center justify-center">
-        <Tabs
-          tabs={MODE_TABS}
+        <ButtonGroup
+          items={MODE_TABS}
           active={focus.af_mode ?? "continuous"}
           onChange={(id) => applyFocus({ af_mode: id })}
         />
       </div>
 
       <div className="flex min-h-0 flex-1 justify-around gap-2 overflow-hidden">
-        <VerticalSlider
+        <Slider
           label="Lens"
           value={(focus.lens_position ?? 0).toFixed(2)}
         >
-          <VerticalSliderInput
+          <SliderInput
             min={focus.min ?? 0}
             max={focus.max ?? 10}
             step={0.05}
@@ -66,7 +66,7 @@ export default function FocusControls() {
               })
             }
           />
-        </VerticalSlider>
+        </Slider>
       </div>
 
       <p className="shrink-0 text-center text-xs text-zinc-500">

@@ -7,10 +7,10 @@ import {
   type CameraControlsState,
 } from "@/lib/camera-api";
 import { usePolling } from "@/lib/use-polling";
-import Tabs from "@/components/_shared/Tabs";
-import VerticalSlider, {
-  VerticalSliderInput,
-} from "@/components/_shared/VerticalSlider";
+import ButtonGroup from "@/components/_shared/ButtonGroup";
+import Slider, {
+  SliderInput,
+} from "@/components/_shared/Slider";
 
 const MODE_TABS = [
   { id: "auto", label: "Auto" },
@@ -84,16 +84,16 @@ export default function ExposureControls() {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex shrink-0 items-center justify-center">
-        <Tabs
-          tabs={MODE_TABS}
+        <ButtonGroup
+          items={MODE_TABS}
           active={manual ? "manual" : "auto"}
           onChange={(id) => apply({ auto_exposure: id === "auto" })}
         />
       </div>
 
       <div className="flex min-h-0 flex-1 justify-around gap-2">
-        <VerticalSlider label="Shutter" value={shutterLabel(state.shutter_us)}>
-          <VerticalSliderInput
+        <Slider label="Shutter" value={shutterLabel(state.shutter_us)}>
+          <SliderInput
             min={0}
             max={SHUTTER_STEPS.length - 1}
             step={1}
@@ -103,10 +103,10 @@ export default function ExposureControls() {
               apply({ shutter_us: SHUTTER_STEPS[Number(e.target.value)] })
             }
           />
-        </VerticalSlider>
+        </Slider>
 
-        <VerticalSlider label="ISO" value={state.iso}>
-          <VerticalSliderInput
+        <Slider label="ISO" value={state.iso}>
+          <SliderInput
             min={100}
             max={1600}
             step={100}
@@ -114,11 +114,11 @@ export default function ExposureControls() {
             disabled={!manual}
             onChange={(e) => apply({ iso: Number(e.target.value) })}
           />
-        </VerticalSlider>
+        </Slider>
 
-        <VerticalSlider label="Aperture" value="Fixed">
-          <VerticalSliderInput disabled value={0} readOnly />
-        </VerticalSlider>
+        <Slider label="Aperture" value="Fixed">
+          <SliderInput disabled value={0} readOnly />
+        </Slider>
       </div>
     </div>
   );

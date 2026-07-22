@@ -11,7 +11,8 @@ import {
   type WhiteBalanceState,
 } from "@/lib/camera-api";
 import { usePolling } from "@/lib/use-polling";
-import Tabs from "@/components/_shared/Tabs";
+import ButtonGroup from "@/components/_shared/ButtonGroup";
+import Slider, { SliderInput } from "@/components/_shared/Slider";
 
 // Colour-tuning tabs (NoIR sensors only), shown at the top of the WB panel.
 // "standard" swaps in the filtered variant's tuning so the AWB presets work —
@@ -137,8 +138,8 @@ export default function WbControls() {
     <div className="flex h-full flex-col gap-3 overflow-y-auto">
       {tuning?.available && (
         <div className="flex shrink-0 items-center justify-center">
-          <Tabs
-            tabs={TUNING_TABS}
+          <ButtonGroup
+            items={TUNING_TABS}
             active={tuning.tuning}
             onChange={applyTuning}
           />
@@ -146,8 +147,8 @@ export default function WbControls() {
       )}
 
       <div className="flex shrink-0 items-center justify-center">
-        <Tabs
-          tabs={MODE_TABS}
+        <ButtonGroup
+          items={MODE_TABS}
           active={wb.mode === "manual" ? "manual" : "auto"}
           onChange={(id) =>
             id === "manual" ? enterManualWb() : applyWb({ mode: "auto" })
@@ -164,7 +165,7 @@ export default function WbControls() {
                 key={preset.value}
                 type="button"
                 onClick={() => applyWb({ mode: preset.value })}
-                className={`rounded-xl border p-2.5 text-xs font-semibold transition ${
+                className={`rounded-md border p-2.5 text-xs font-semibold transition ${
                   active
                     ? "border-orange-500 bg-orange-500 text-white"
                     : "border-orange-300 text-orange-500 hover:border-gray-500 hover:text-white"
@@ -201,12 +202,14 @@ export default function WbControls() {
               },
             ] as const
           ).map(({ key, label, gradient }) => (
-            <label key={key} className="flex items-center gap-3">
-              <span className="w-8 text-xs font-semibold text-gray-500">
-                {label}
-              </span>
-              <input
-                type="range"
+            <Slider
+              key={key}
+              orientation="horizontal"
+              label={label}
+              value={Math.round(wbAdjust[key] * 100)}
+            >
+              <SliderInput
+                orientation="horizontal"
                 min={-100}
                 max={100}
                 step={1}
@@ -214,13 +217,9 @@ export default function WbControls() {
                 onChange={(e) =>
                   adjustWb({ [key]: Number(e.target.value) / 100 })
                 }
-                className="h-2 flex-1 cursor-pointer appearance-none accent-blue-600"
-                style={{ background: gradient }}
+                trackBackground={gradient}
               />
-              <span className="w-10 text-right font-mono text-xs text-gray-100">
-                {Math.round(wbAdjust[key] * 100)}
-              </span>
-            </label>
+            </Slider>
           ))}
           <p className="text-center font-mono text-xs text-gray-500">
             R {wb.red_gain.toFixed(2)} · B {wb.blue_gain.toFixed(2)}

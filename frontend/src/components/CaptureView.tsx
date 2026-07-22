@@ -186,7 +186,7 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
         style={
           box.width > 0 ? { width: box.width, height: box.height } : undefined
         }
-        className={`relative overflow-hidden rounded-sm border-4 border-stone-50 bg-black shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
+        className={`relative overflow-hidden rounded-md border-4 border-stone-50 bg-black shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
           focusAvailable ? "cursor-crosshair" : ""
         }`}
       >
@@ -234,7 +234,7 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
           <div
             key={focusRing.key}
             aria-hidden
-            className="pointer-events-none absolute h-16 w-16 rounded-lg border-2 border-yellow-400"
+            className="pointer-events-none absolute h-16 w-16 rounded-md border-2 border-yellow-400"
             style={{
               left: `${focusRing.x * 100}%`,
               top: `${focusRing.y * 100}%`,

@@ -54,7 +54,7 @@ export default function CaptureGallery() {
           <figure
             key={filename}
             onClick={() => setSelected(filename)}
-            className="cursor-pointer overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 transition hover:border-zinc-600"
+            className="cursor-pointer overflow-hidden rounded-md border border-zinc-800 bg-zinc-900/50 transition hover:border-zinc-600"
           >
             <div className="flex aspect-video w-full items-center justify-center bg-zinc-950">
               <img
@@ -84,7 +84,7 @@ export default function CaptureGallery() {
             alt={selected}
             className="max-h-full max-w-full object-contain"
           />
-          <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300">
+          <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300">
             {selected} · tap to close
           </span>
         </div>

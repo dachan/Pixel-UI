@@ -25,17 +25,33 @@ function batteryLevel(thermal: SystemThermal | null): string {
   if (thermal?.battery_level === null || thermal?.battery_level === undefined) {
     return "—";
   }
-  // A "+" prefix marks charging (inferred from the voltage trend).
-  const mark = thermal.charging ? "+" : "";
-  return `${mark}${thermal.battery_level}%`;
+  return `${thermal.battery_level}%`;
+}
+
+function BatteryStatus({ thermal }: { thermal: SystemThermal | null }) {
+  return (
+    <div className="flex items-baseline gap-2 text-xs">
+      <span className="font-mono tracking-wide text-stone-500">Battery</span>
+      <span className="inline-flex items-center gap-1 font-mono font-semibold text-stone-700">
+        {thermal?.charging && (
+          <svg
+            viewBox="0 0 24 24"
+            aria-label="Charging"
+            className="size-3.5 fill-current text-emerald-600"
+          >
+            <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+          </svg>
+        )}
+        {batteryLevel(thermal)}
+      </span>
+    </div>
+  );
 }
 
 function StatusItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline gap-2 text-xs">
-      <span className="font-mono tracking-wide text-stone-500">
-        {label}
-      </span>
+      <span className="font-mono tracking-wide text-stone-500">{label}</span>
       <span className="font-mono font-semibold text-stone-700">{value}</span>
     </div>
   );
@@ -62,7 +78,7 @@ export default function StatusRow() {
         label="Time"
         value={MOCK_TIME ?? (now ? formatTime(now) : "—")}
       />
-      <StatusItem label="Battery" value={batteryLevel(thermal)} />
+      <BatteryStatus thermal={thermal} />
       <StatusItem label="Temp" value={currentTemperature(thermal)} />
     </div>
   );

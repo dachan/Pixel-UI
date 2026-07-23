@@ -309,12 +309,16 @@ def camera_tuning():
 # --- System ------------------------------------------------------------------- #
 
 def _battery_extreme(volts, at):
-    """{volts, percent, at} for a logged min/max, or None if not seen yet."""
+    """{volts, at} for a logged min/max, or None if not seen yet.
+
+    These are voltage-only history points. Their percentage must not be
+    reconstructed from the voltage curve because the X1201 fuel gauge's SOC
+    register is the authoritative displayed charge level.
+    """
     if volts is None:
         return None
     return {
         "volts": round(volts, 2),
-        "percent": thermal_config.voltage_to_percent(volts),
         "at": at,
     }
 

@@ -278,11 +278,11 @@ export function setFormat(
 // Identical readings are de-duplicated server-side.
 export type SystemTemperatures = Record<string, number>;
 
-// A logged battery extreme: the voltage/percent seen, and when (unix
-// seconds). Null if that extreme hasn't been observed yet.
+// A logged battery-voltage extreme and when it was seen (unix seconds).
+// Percentage is deliberately excluded: live X1201 SOC is more accurate than
+// recalculating an older percentage from cell voltage.
 export type BatteryExtreme = {
   volts: number;
-  percent: number;
   at: number;
 } | null;
 
@@ -295,8 +295,9 @@ export type SystemThermal = {
   // sits low, which a single instantaneous reading can't tell you.
   battery_min: BatteryExtreme;
   battery_max: BatteryExtreme;
-  // True while charging, false on battery, null until known. Inferred from
-  // the voltage trend (the fuel gauge has no charge flag).
+  // True while externally powered/charging, false on battery, null until
+  // known. X1201 uses its dedicated adapter-status GPIO; other hardware
+  // falls back to a voltage trend.
   charging: boolean | null;
   temperatures: SystemTemperatures;
   // True while the app is reducing preview frame rate to cool the Pi.

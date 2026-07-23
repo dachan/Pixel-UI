@@ -43,6 +43,11 @@ X1201_I2C_BUS = "/dev/i2c-1"
 X1201_FUEL_GAUGE_ADDR = 0x36
 X1201_VCELL_REG = 0x02
 X1201_SOC_REG = 0x04
+# The X1201 exposes direct AC-power status on GPIO6: high = adapter OK,
+# low = adapter absent/failed. This is more reliable than inferring charge
+# state from a slowly changing cell voltage.
+X1201_AC_OK_GPIO = 6
+X1201_GPIO_CHIP = "/dev/gpiochip0"
 # VCELL LSB in volts (MAX1704x: 78.125 µV). Works for both MAX17040 and
 # MAX17048 — the /16 vs ×16 scale difference cancels to the same value.
 X1201_VCELL_LSB_V = 78.125e-6
@@ -247,6 +252,34 @@ def _read_x1201_soc() -> int | None:
     return max(0, min(100, round(percent)))
 
 
+def _read_x1201_external_power() -> bool | None:
+    """Return whether the X1201 reports external power on GPIO6.
+
+    The UPS drives this line high when the power adapter is healthy. ``None``
+    means the board or libgpiod is unavailable, so callers can fall back to
+    the voltage-trend heuristic used on other battery hardware.
+    """
+    try:
+        import gpiod
+        from gpiod.line import Direction, Value
+
+        request = gpiod.request_lines(
+            X1201_GPIO_CHIP,
+            consumer="ir-cam-battery",
+            config={
+                X1201_AC_OK_GPIO: gpiod.LineSettings(direction=Direction.INPUT)
+            },
+        )
+    except (AttributeError, ImportError, OSError):
+        return None
+    try:
+        return request.get_value(X1201_AC_OK_GPIO) == Value.ACTIVE
+    except OSError:
+        return None
+    finally:
+        request.release()
+
+
 def _cpu_freq_bounds() -> tuple[int, int] | None:
     """(min, max) CPU frequency in kHz from cpufreq sysfs, or None off-Pi."""
     for policy in sorted(glob.glob(_CPU_POLICY_GLOB)):
@@ -320,7 +353,13 @@ class ThermalMonitor:
         volts = read_battery_voltage()
         if volts is None:
             return
-        self._update_charging(volts)  # resolves self.charging first
+        # X1201 has a dedicated adapter-status line. Keep the voltage-trend
+        # detector warm as a fallback for non-X1201 battery hardware, but use
+        # the direct signal whenever it is available.
+        self._update_charging(volts)
+        external_power = _read_x1201_external_power()
+        if external_power is not None:
+            self.charging = external_power
         self._update_battery_percent()  # the smoothed SOC shown to the user
         # Min/max should reflect the battery's own state, not the charger:
         # while charging, voltage is being actively driven up by the

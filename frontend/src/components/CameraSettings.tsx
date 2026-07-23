@@ -177,29 +177,61 @@ export default function CameraSettings({
               </div>
               <div className="flex flex-col gap-1 text-xs">
                 <div className="flex justify-between">
-                  <span>Now</span>
+                  <span>Charge</span>
                   <span className="font-mono font-semibold text-stone-700">
-                    {thermal.battery_volts.toFixed(2)}V ({thermal.battery_level}
-                    %)
+                    {thermal.battery_level ?? "—"}%
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Lowest</span>
+                  <span>Power</span>
+                  <span
+                    className={`inline-flex items-center gap-1 font-mono font-semibold ${
+                      thermal.charging ? "text-emerald-600" : "text-stone-700"
+                    }`}
+                  >
+                    {thermal.charging ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                        className="size-3.5 fill-current"
+                      >
+                        <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+                      </svg>
+                    ) : null}
+                    {thermal.charging === null
+                      ? "Checking…"
+                      : thermal.charging
+                        ? "Charging"
+                        : "On battery"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Cell voltage</span>
+                  <span className="font-mono text-stone-700">
+                    {thermal.battery_volts.toFixed(2)}V
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Lowest on battery</span>
                   <span className="font-mono text-stone-700">
                     {thermal.battery_min
-                      ? `${thermal.battery_min.volts.toFixed(2)}V (${thermal.battery_min.percent}%) · ${formatAgo(thermal.battery_min.at)}`
+                      ? `${thermal.battery_min.volts.toFixed(2)}V · ${formatAgo(thermal.battery_min.at)}`
                       : "—"}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Highest</span>
+                  <span>Highest on battery</span>
                   <span className="font-mono text-stone-700">
                     {thermal.battery_max
-                      ? `${thermal.battery_max.volts.toFixed(2)}V (${thermal.battery_max.percent}%) · ${formatAgo(thermal.battery_max.at)}`
+                      ? `${thermal.battery_max.volts.toFixed(2)}V · ${formatAgo(thermal.battery_max.at)}`
                       : "—"}
                   </span>
                 </div>
               </div>
+              <p className="text-xs text-stone-500">
+                Charge uses the X1201 fuel gauge. Charging status comes from the
+                UPS&apos;s direct external-power signal.
+              </p>
             </section>
           )}
 

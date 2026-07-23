@@ -17,6 +17,15 @@ type SliderLockContextValue = {
   setLocked: (locked: boolean) => void;
 };
 
+// Whether press-and-hold can lock this slider. False for a slider sitting in
+// an auto mode (focus/shutter/ISO on "A", WB on a preset) — there is no manual
+// value to protect, and a lock there would only block the tap that switches
+// back to manual. Set on Slider so the label's lock icon and the input agree.
+const SliderLockableContext = createContext(true);
+
+// Press-and-hold duration (ms) that toggles a slider's lock.
+const LOCK_HOLD_MS = 1000;
+
 const SliderLockContext = createContext<SliderLockContextValue | null>(null);
 
 function LockIcon() {
@@ -55,8 +64,13 @@ export function SliderInput({
 }) {
   const vertical = orientation === "vertical";
   const lockContext = useContext(SliderLockContext);
+  const lockable = useContext(SliderLockableContext);
   const [standaloneLocked, setStandaloneLocked] = useState(false);
-  const locked = lockContext?.locked ?? standaloneLocked;
+  // A slider that isn't lockable never reads as locked, even if it was locked
+  // before switching to auto — otherwise it would be stuck, since
+  // press-and-hold (the only way to unlock) is ignored while unlockable. The
+  // stored flag is kept, so returning to manual restores the lock.
+  const locked = (lockContext?.locked ?? standaloneLocked) && lockable;
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const movedDuringPress = useRef(false);
   const completedHold = useRef(false);
@@ -90,10 +104,13 @@ export function SliderInput({
   }
 
   function startHold() {
-    if (disabled) return;
+    // Reset the per-press state on EVERY press, even one that can't lock:
+    // these refs gate the tap that switches A/M, so leaving them stale on an
+    // unlockable (auto) slider would let one stray move kill tapping for good.
     cancelHold();
     movedDuringPress.current = false;
     completedHold.current = false;
+    if (disabled || !lockable) return;
     holdTimer.current = setTimeout(() => {
       completedHold.current = true;
       if (lockContext) {
@@ -102,7 +119,7 @@ export function SliderInput({
         setStandaloneLocked((current) => !current);
       }
       holdTimer.current = null;
-    }, 2000);
+    }, LOCK_HOLD_MS);
   }
 
   useEffect(() => cancelHold, []);
@@ -146,7 +163,23 @@ export function SliderInput({
         }}
         onClick={(event) => {
           if (!locked && !movedDuringPress.current && !completedHold.current) {
-            onTap?.();
+            // Only a tap landing on the thumb itself toggles state (e.g.
+            // A/M) — a tap elsewhere on the track is a jump-to-value click,
+            // which the browser already applies via the native range input.
+            const rect = event.currentTarget.getBoundingClientRect();
+            const size = vertical ? rect.height : rect.width;
+            // Tap position and thumb centre, both measured from the track's
+            // zero-value end (bottom for vertical, left for horizontal). The
+            // thumb travels inset by half its width at each end, so its
+            // centre is not simply fraction * size — this mirrors the
+            // thumbPosition calc above.
+            const pos = vertical
+              ? rect.bottom - event.clientY
+              : event.clientX - rect.left;
+            const thumbPos = fraction * (size - thumbSize) + thumbOffset;
+            if (Math.abs(pos - thumbPos) <= thumbOffset) {
+              onTap?.();
+            }
           }
           onClick?.(event);
         }}
@@ -199,7 +232,7 @@ export function SliderInput({
       {locked && (
         <button
           type="button"
-          aria-label="Slider locked. Press and hold for two seconds to unlock."
+          aria-label="Slider locked. Press and hold for one second to unlock."
           style={thumbPosition}
           className={[
             "absolute z-20 flex items-center justify-center rounded-full bg-stone-100 text-stone-800",
@@ -235,6 +268,8 @@ type SliderProps = {
   children: ReactNode;
   defaultLocked?: boolean;
   onLockedChange?: (locked: boolean) => void;
+  /** See SliderLockableContext. Pass false while the slider is on auto. */
+  lockable?: boolean;
 };
 
 export default function Slider({
@@ -244,55 +279,65 @@ export default function Slider({
   children,
   defaultLocked = false,
   onLockedChange,
+  lockable = true,
 }: SliderProps) {
-  const [locked, setLocked] = useState(defaultLocked);
+  const [storedLocked, setLocked] = useState(defaultLocked);
   function updateLocked(next: boolean) {
     setLocked(next);
     onLockedChange?.(next);
   }
-  const lockContext = { locked, setLocked: updateLocked };
+  // An unlockable slider never reads as locked, so it can't get stuck:
+  // press-and-hold is the only way to unlock and it's ignored while
+  // unlockable. The stored flag survives, restoring the lock on return
+  // to manual.
+  const locked = storedLocked && lockable;
+  const lockContext = { locked: storedLocked, setLocked: updateLocked };
 
   if (orientation === "horizontal") {
     return (
-      <SliderLockContext value={lockContext}>
-        <label className="flex w-full min-w-0 items-center gap-3">
-          {label != null && (
-            <span className="inline-flex w-10 shrink-0 items-center gap-1 font-mono text-xs leading-none font-semibold text-stone-500">
-              <span className="truncate">{label}</span>
-              {locked && <LockIcon />}
-            </span>
-          )}
-          <div className="flex min-h-0 min-w-0 flex-1 items-center">
-            {children}
-          </div>
-          {value != null && (
-            <span className="w-10 shrink-0 text-right font-mono text-xs text-stone-700">
-              {value}
-            </span>
-          )}
-        </label>
-      </SliderLockContext>
+      <SliderLockableContext value={lockable}>
+        <SliderLockContext value={lockContext}>
+          <label className="flex w-full min-w-0 items-center gap-3">
+            {label != null && (
+              <span className="inline-flex w-10 shrink-0 items-center gap-1 font-mono text-xs leading-none font-semibold text-stone-500">
+                <span className="truncate">{label}</span>
+                {locked && <LockIcon />}
+              </span>
+            )}
+            <div className="flex min-h-0 min-w-0 flex-1 items-center">
+              {children}
+            </div>
+            {value != null && (
+              <span className="w-10 shrink-0 text-right font-mono text-xs text-stone-700">
+                {value}
+              </span>
+            )}
+          </label>
+        </SliderLockContext>
+      </SliderLockableContext>
     );
   }
 
   return (
-    <SliderLockContext value={lockContext}>
-      <label className="flex h-full w-full min-w-0 flex-col items-center gap-4">
-        <div className="flex w-full min-w-0 flex-col items-center">
-          {label != null && (
-            <span className="inline-flex max-w-full items-center gap-1 text-center font-mono text-xs leading-none font-semibold text-stone-500">
-              <span className="truncate">{label}</span>
-              {locked && <LockIcon />}
-            </span>
-          )}
-          {value != null && (
-            <span className="font-mono text-xs text-stone-700">{value}</span>
-          )}
-        </div>
-        <div className="flex h-full min-h-0 w-full justify-center">
-          {children}
-        </div>
-      </label>
-    </SliderLockContext>
+    <SliderLockableContext value={lockable}>
+      <SliderLockContext value={lockContext}>
+        <label className="flex h-full w-full min-w-0 flex-col items-center gap-4">
+          <div className="flex w-full min-w-0 flex-col items-center">
+            {label != null && (
+              <span className="inline-flex max-w-full items-center gap-1 text-center font-mono text-xs leading-none font-semibold text-stone-500">
+                <span className="truncate">{label}</span>
+                {locked && <LockIcon />}
+              </span>
+            )}
+            {value != null && (
+              <span className="font-mono text-xs text-stone-700">{value}</span>
+            )}
+          </div>
+          <div className="flex h-full min-h-0 w-full justify-center">
+            {children}
+          </div>
+        </label>
+      </SliderLockContext>
+    </SliderLockableContext>
   );
 }

@@ -39,6 +39,10 @@ export default function CameraTabs() {
     "showCaptureButton",
     true,
   );
+  // Manual-focus peaking overlay on the live preview; defaults on, persisted
+  // locally. Toggled from the Focus tab, not the Settings tab, since it's
+  // specific to that control panel.
+  const [focusPeaking, setFocusPeaking] = useStoredBool("focusPeaking", true);
 
   // The physical shutter can fire while the user is browsing Gallery,
   // Settings, or Meta. Capture events are global, so bring the live camera
@@ -60,7 +64,10 @@ export default function CameraTabs() {
           <div className="flex size-full gap-4">
             <div className="flex min-h-0 w-2/3 flex-col gap-4">
               <div className="flex min-h-0 items-start justify-start">
-                <CameraPreview showGrid={showGrid} />
+                <CameraPreview
+                  showGrid={showGrid}
+                  showFocusPeaking={focusPeaking}
+                />
               </div>
               <div className="shrink-0">
                 <ButtonGroup
@@ -74,6 +81,8 @@ export default function CameraTabs() {
               <CameraControls
                 panel={controlPanel}
                 showCaptureButton={showCaptureButton}
+                focusPeaking={focusPeaking}
+                onFocusPeakingChange={setFocusPeaking}
               />
             </div>
           </div>

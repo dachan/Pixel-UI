@@ -54,7 +54,13 @@ type CaptureSession = {
   captureDone: boolean;
 };
 
-export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
+export function CameraPreview({
+  showGrid = false,
+  showFocusPeaking = true,
+}: {
+  showGrid?: boolean;
+  showFocusPeaking?: boolean;
+}) {
   const { ref: containerRef, size: containerSize } =
     useElementSize<HTMLDivElement>();
   const imgRef = useRef<HTMLImageElement>(null);
@@ -206,7 +212,7 @@ export function CameraPreview({ showGrid = false }: { showGrid?: boolean }) {
             className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           />
         )}
-        {focus?.af_mode === "manual" && (
+        {focus?.af_mode === "manual" && showFocusPeaking && (
           // Focus peaking: an edge-detect + threshold SVG filter (defined
           // below) applied to a second copy of the same stream, screen-
           // blended over the base image so only strong edges add a bright

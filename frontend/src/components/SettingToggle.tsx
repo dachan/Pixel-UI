@@ -17,7 +17,14 @@ export default function SettingToggle({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
+      {/* The whole row is a hit target, not just the switch — the title and
+          description are the biggest thing to aim at on a touchscreen. The
+          switch stays the focusable control and stops its own click from
+          bubbling here, so tapping it doesn't toggle twice. */}
+      <div
+        onClick={() => onChange(!checked)}
+        className="flex cursor-pointer items-center justify-between gap-3"
+      >
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-semibold text-stone-700">{title}</h2>
           <p className="text-xs text-stone-500">{description}</p>

@@ -78,7 +78,11 @@ export default function ExposureControls() {
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex min-h-0 flex-1 justify-around gap-2">
-        <Slider label="Shutter" value={shutterLabel(state.shutter_us)}>
+        <Slider
+          label="Shutter"
+          value={shutterLabel(state.shutter_us)}
+          lockable={shutterManual}
+        >
           <SliderInput
             min={0}
             max={SHUTTER_STEPS.length - 1}
@@ -94,7 +98,7 @@ export default function ExposureControls() {
           />
         </Slider>
 
-        <Slider label="ISO" value={state.iso}>
+        <Slider label="ISO" value={state.iso} lockable={isoManual}>
           <SliderInput
             min={100}
             max={1600}

@@ -230,6 +230,7 @@ export default function WbControls() {
                   key={key}
                   label={label}
                   value={Math.round(adjust * 100)}
+                  lockable={manual}
                 >
                   <div className="relative flex h-full min-h-0 w-12 justify-center">
                     <div

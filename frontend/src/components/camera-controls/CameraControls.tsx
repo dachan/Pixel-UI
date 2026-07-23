@@ -23,9 +23,13 @@ export type ControlTabId = (typeof CONTROL_TABS)[number]["id"];
 export default function CameraControls({
   panel,
   showCaptureButton = true,
+  focusPeaking = true,
+  onFocusPeakingChange,
 }: {
   panel: ControlTabId;
   showCaptureButton?: boolean;
+  focusPeaking?: boolean;
+  onFocusPeakingChange?: (next: boolean) => void;
 }) {
   const [captureBusy, setCaptureBusy] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -48,7 +52,10 @@ export default function CameraControls({
         {panel === "exposure" ? (
           <ExposureControls />
         ) : panel === "focus" ? (
-          <FocusControls />
+          <FocusControls
+            peaking={focusPeaking}
+            onPeakingChange={onFocusPeakingChange}
+          />
         ) : (
           <WbControls />
         )}

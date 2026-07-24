@@ -191,15 +191,15 @@ export function SliderInput({
                 "[direction:rtl] [writing-mode:vertical-lr]",
                 "[&::-moz-range-track]:h-full [&::-moz-range-track]:w-1.5 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-stone-300",
                 "[&::-webkit-slider-runnable-track]:h-full [&::-webkit-slider-runnable-track]:w-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:border-0 [&::-webkit-slider-runnable-track]:bg-stone-300",
-                "[&::-moz-range-thumb]:size-12 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-100",
-                "[&::-webkit-slider-thumb]:-ml-5.25 [&::-webkit-slider-thumb]:size-12 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-stone-100",
+                "[&::-moz-range-thumb]:size-12 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-100 [&::-moz-range-thumb]:shadow-[0_0_10px_rgb(0_0_0_/_0.18)]",
+                "[&::-webkit-slider-thumb]:-ml-5.25 [&::-webkit-slider-thumb]:size-12 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-stone-100 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgb(0_0_0_/_0.18)]",
               ]
             : [
                 "block h-12 w-full min-w-0 flex-1",
                 "[&::-moz-range-track]:h-1.5 [&::-moz-range-track]:w-full [&::-moz-range-track]:rounded-full [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-stone-300",
                 "[&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:w-full [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:border-0 [&::-webkit-slider-runnable-track]:bg-stone-300",
-                "[&::-moz-range-thumb]:size-12 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-100",
-                "[&::-webkit-slider-thumb]:-mt-5.25 [&::-webkit-slider-thumb]:size-12 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-stone-100",
+                "[&::-moz-range-thumb]:size-12 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-stone-100 [&::-moz-range-thumb]:shadow-[0_0_10px_rgb(0_0_0_/_0.18)]",
+                "[&::-webkit-slider-thumb]:-mt-5.25 [&::-webkit-slider-thumb]:size-12 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-stone-100 [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgb(0_0_0_/_0.18)]",
               ],
           locked && "pointer-events-none opacity-60",
           "disabled:cursor-not-allowed disabled:opacity-50",
@@ -235,7 +235,7 @@ export function SliderInput({
           aria-label="Slider locked. Press and hold for one second to unlock."
           style={thumbPosition}
           className={[
-            "absolute z-20 flex items-center justify-center rounded-full bg-stone-100 text-stone-800",
+            "absolute z-20 flex items-center justify-center rounded-full bg-stone-100 text-stone-800 shadow-[0_0_10px_rgb(0_0_0_/_0.18)]",
             vertical
               ? "left-1/2 -translate-x-1/2 -translate-y-1/2"
               : "top-1/2 -translate-x-1/2 -translate-y-1/2",

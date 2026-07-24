@@ -23,7 +23,7 @@ export default function ButtonGroup<T extends string>({
           onClick={() => onChange(item.id)}
           className={`flex-1 truncate rounded-md border border-stone-300 px-4 py-2 text-xs font-semibold transition-all ${
             active === item.id
-              ? "bg-stone-50 text-orange-500 shadow-[0_0_4px_rgb(0_0_0_/_0.08)]"
+              ? "bg-stone-50 text-orange-500 shadow-[0_0_2px_rgb(0_0_0_/_0.08)]"
               : "bg-stone-100 text-stone-500 shadow-[0_0_4px_rgb(0_0_0_/_0.24)]"
           }`}
         >

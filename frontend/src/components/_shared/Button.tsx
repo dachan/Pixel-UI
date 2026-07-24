@@ -22,7 +22,7 @@ export default function Button({
     <button
       type={type}
       className={[
-        "w-full rounded-md border px-4 py-2 text-xs font-semibold transition disabled:opacity-50",
+        "w-full rounded-md border px-4 py-2 text-xs font-semibold shadow-[0_0_4px_rgb(0_0_0_/_0.16)] transition-all disabled:opacity-50",
         VARIANTS[variant],
         variant === "secondary" && selected && "!text-orange-500",
         variant === "destructive" && selected && "!bg-red-500 !text-white",

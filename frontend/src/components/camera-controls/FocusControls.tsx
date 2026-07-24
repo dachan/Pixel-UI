@@ -100,10 +100,13 @@ export default function FocusControls({
             alone — a margin would re-centre the whole row and drag its
             neighbours along. */}
         {onPeakingChange && (
-          // Label included in the hit target — see SettingToggle.
+          // Label included in the hit target — see SettingToggle. self-center
+          // (not the row's default stretch) sizes this block to just the label
+          // + switch, so the hit target isn't a full-height column of empty
+          // space above and below them.
           <div
             onClick={() => onPeakingChange(!peaking)}
-            className="mr-[6px] flex shrink-0 -translate-x-[50px] cursor-pointer flex-col items-start justify-center gap-2"
+            className="mr-[6px] flex shrink-0 -translate-x-[50px] cursor-pointer flex-col items-start gap-2 self-center"
           >
             <span className="font-mono text-xs leading-none font-semibold text-stone-500">
               Focus Peaking
